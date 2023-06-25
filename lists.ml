@@ -5,7 +5,7 @@ let rec last l =
     match l with
     | [] -> None
     | [el] -> Some el
-    | hd :: rest -> last rest
+    | hd :: tl -> last tl
 ;;
 
 (* Last Two Elements of a List *)
@@ -13,10 +13,9 @@ let rec last l =
 (* Find the last but one (last and penultimate) elements of a list. *)
 let rec last_two l = 
     match l with
-    | [] -> None
-    | [_] -> None
+    | [] | [_] -> None
     | [a ; b] -> Some (a, b)
-    | hd :: rest -> last_two rest
+    | hd :: tl -> last_two tl
 ;;
 
 (* N'th Element of a List *)
@@ -24,9 +23,9 @@ let rec last_two l =
 (* Find the N'th element of a list. *)
 let rec nth l n =
     match (l, n) with
-    | (hd :: rest, 0) -> hd
     | ([], _) -> raise (Failure "nth")
-    | (hd :: rest, _) -> nth rest (n-1)
+    | (hd :: tl, 0) -> hd
+    | (hd :: tl, _) -> nth tl (n-1)
 ;;
 
 (* Length of a List *)
@@ -35,7 +34,7 @@ let rec nth l n =
 let rec len l =
     match l with
     | [] -> 0
-    | hd :: rest -> len rest + 1
+    | hd :: tl -> len tl + 1
 ;;
 
 (* Reverse a List *)
@@ -44,11 +43,11 @@ let rec len l =
 let rec rev l =
     match l with
     | [] -> []
-    | hd :: rest -> (rev rest) @ [hd]
+    | hd :: tl -> rev tl @ [hd]
 ;;
 
 (* Palindrome *)
-(* Peginner difficulty *)
+(* Beginner difficulty *)
 (* Find out whether a list is a palindrome. *)
 let is_palindrome l =
     l = rev l
@@ -58,14 +57,14 @@ let is_palindrome l =
 (* Intermediate difficulty *)
 (* Flatten a nested list structure. *)
 type 'a node =
-  | One of 'a 
-  | Many of 'a node list
+    | One of 'a 
+    | Many of 'a node list
 ;;
 let rec flatten l =
     match l with
     | [] -> []
-    | (One  hd) :: rest -> hd :: (flatten rest)
-    | (Many hd) :: rest -> (flatten hd) @ (flatten rest)
+    | (One  hd) :: tl -> hd :: flatten tl
+    | (Many hd) :: tl -> flatten hd @ flatten tl
 ;;
 
 (* Eliminate Duplicates *)
@@ -74,9 +73,9 @@ let rec flatten l =
 let rec compress l =
     match l with
     | [] -> []
-    | hd :: rest ->
-            let rest = compress rest in
-            if List.mem hd rest then rest else hd :: rest
+    | hd :: tl ->
+            let tl = compress tl in
+            if List.mem hd tl then tl else hd :: tl
 ;;
 
 (* Pack Consecutive Duplicates *)
@@ -108,24 +107,27 @@ let rec encode l =
 let rec decode l =
     match l with
     | [] -> []
-    | (0, el) :: tl -> el :: (decode tl)
-    | (n, el) :: tl -> el :: (decode ((n-1, el) :: tl))
+    | (1, el) :: tl -> el :: decode tl
+    | (n, el) :: tl -> el :: decode ((n-1, el) :: tl)
 ;;
 
+(* Duplicate the Elements of a List *)
+(* Beginner difficulty *)
+(* Duplicate the elements of a list. *)
 let rec duplicate l =
     match l with
     | [] -> []
-    | hd :: tl -> hd :: hd :: (duplicate tl)
+    | hd :: tl -> hd :: hd :: duplicate tl
 ;;
 
 (* Replicate the Elements of a List a Given Number of Times *)
 (* Intermediate difficulty *)
 (* Replicate the elements of a list a given number of times. *)
-let rec repeat el n =
-    if n = 0 then []
-    else el :: (repeat el (n-1))
-;;
 let rec replicate l n =
+    let rec repeat el n =
+        if n = 0 then []
+        else el :: repeat el (n-1)
+in
     match l with
     | [] -> []
     | hd :: tl -> (repeat hd n) @ (replicate tl n)
@@ -134,13 +136,13 @@ let rec replicate l n =
 (* Drop Every N'th Element From a List *)
 (* Intermediate difficulty *)
 (* Drop every N'th element from a list. *)
-let rec _drop l n i =
-    match (l, i) with
-    | ([], _) -> []
-    | (hd :: tl, 1) -> _drop tl n n
-    | (hd :: tl, _)-> hd :: (_drop tl n (i-1))
-;;
 let drop l n =
+    let rec _drop l n i =
+        match (l, i) with
+        | ([], _) -> []
+        | (hd :: tl, 1) -> _drop tl n n
+        | (hd :: tl, _)-> hd :: _drop tl n (i-1)
+in
     if n <= 0
     then raise (Failure "drop: n must not be <1")
     else _drop l n n
@@ -153,11 +155,11 @@ let drop l n =
 let rec split l n =
     match (l, n) with
     | ([], _) -> ([], [])
-    | (hd :: tl, 1) -> ([hd], tl)
+    | (hd :: tl, 0) -> ([], l)
     | (hd :: tl, _) ->
             match split tl (n-1) with
-            | ([], tl) -> ([hd], tl)
-            | (shd, tl) -> ((hd :: shd), tl)
+            | ([], stl)  -> ([hd], stl)
+            | (shd, stl) -> (hd :: shd, stl)
 ;;
 
 (* Extract a Slice From a List *)
@@ -168,7 +170,7 @@ let rec split l n =
 let rec slice l a b =
     match (l, a, b) with
     | (hd :: tl, 0, 0) -> [hd]
-    | (hd :: tl, 0, b) -> hd :: (slice tl 0 (b-1))
+    | (hd :: tl, 0, b) -> hd :: slice tl 0 (b-1)
     | (hd :: tl, a, b) -> slice tl (a-1) (b-1)
     | ([], _, _) -> raise (Failure "slice: index out of bounds")
 
