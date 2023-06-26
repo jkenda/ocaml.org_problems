@@ -40,11 +40,11 @@ assert (not (coprime 20536 7826));;
    Euler's totient function plays an important role in one of the most widely used public key cryptography methods (RSA).
    In this exercise you should use the most primitive method to calculate this function (there are smarter ways that we shall discuss later). *)
 let phi x =
-    let rec aux = function
-        | 1 -> 1
-        | y -> aux (y - 1) + if coprime x y then 1 else 0
+    let rec aux acc = function
+        | 0 -> acc
+        | y -> aux (if coprime x y then acc + 1 else acc) (y - 1)
     in
-    aux (x - 1)
+    aux 0 (x - 1)
 ;;
 assert (phi 10 = 4);;
 
@@ -97,9 +97,9 @@ let timeit f f_name arg =
     let t0 = Sys.time () in
     let result = f arg in
     let t1 = Sys.time () in
-    printf "%d; %f s <- %s\n" result (t1 -. t0) f_name;;
+    printf "%d; %f ms <- %s\n" result ((t1 -. t0) *. 1000.) f_name;;
 ;;
-let integer = 100900;;
+let integer = 1234567;;
 timeit phi "phi" integer;;
 timeit phi_improved "phi_improved" integer;;
 
@@ -146,7 +146,7 @@ assert (goldbach 28 = (5, 23));;
    Very rarely, the primes are both bigger than say 50.
    Try to find out how many such cases there are in the range 2..3000. *)
 let goldbach_list lower upper =
-    let rec next_even n = if n mod 2 = 0 then n else next_even (n + 1) in
+    let rec next_even n = if n mod 2 = 0 then n else n + 1 in
     let rec aux acc n =
         if n > upper then acc
         else aux ((n, goldbach n) :: acc) (n + 2)

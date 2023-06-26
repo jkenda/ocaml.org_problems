@@ -32,9 +32,12 @@ assert (nth 2 ["a"; "b"; "c"; "d"; "e"] = "c");;
 (* Length of a List *)
 (* Beginner difficulty *)
 (* Find the number of elements of a list. *)
-let rec len = function
-    | [] -> 0
-    | hd :: tl -> len tl + 1
+let len list =
+    let rec aux acc = function
+        | [] -> acc
+        | hd :: tl -> aux (acc + 1) tl
+    in
+    aux 0 list
 ;;
 assert (len ["a"; "b"; "c"] = 3);;
 assert (len [] = 0);;
@@ -98,12 +101,16 @@ assert (pack ["a"; "a"; "a"; "a"; "b"; "c"; "c"; "a"; "a"; "d"; "d"; "e"; "e"; "
 = [["a"; "a"; "a"; "a"]; ["b"]; ["c"; "c"]; ["a"; "a"]; ["d"; "d"]; ["e"; "e"; "e"; "e"]]);;
 
 (* Run-Length Encoding *)
-let rec encode = function
-    | [] -> []
-    | hd :: tl ->
-            match encode tl with
-            | (n, en_el) :: en_tl when en_el = hd -> (n+1, en_el) :: en_tl
-            | _ as en_l -> (1, hd) :: en_l
+let encode list =
+    let rec aux acc = function
+        | [] -> acc
+        | hd :: tl ->
+                match acc with
+                | (n, en_el) :: en_tl when en_el = hd -> aux ((n+1, en_el) :: en_tl) tl
+                | _ as en_l -> aux ((1, hd) :: en_l) tl
+    in
+    aux [] list
+        |> List.rev
 ;;
 assert (encode ["a"; "a"; "a"; "a"; "b"; "c"; "c"; "a"; "a"; "d"; "e"; "e"; "e"; "e"]
 = [(4, "a"); (1, "b"); (2, "c"); (2, "a"); (1, "d"); (4, "e")]);;
@@ -111,10 +118,14 @@ assert (encode ["a"; "a"; "a"; "a"; "b"; "c"; "c"; "a"; "a"; "d"; "e"; "e"; "e";
 (* Decode a Run-Length Encoded List *)
 (* Intermediate difficulty *)
 (* Given a run-length code list generated as specified in the previous problem, construct its uncompressed version. *)
-let rec decode = function
-    | [] -> []
-    | (1, el) :: tl -> el :: decode tl
-    | (n, el) :: tl -> el :: decode ((n - 1, el) :: tl)
+let decode list =
+    let rec aux acc = function
+        | [] -> acc
+        | (1, el) :: tl -> aux (el :: acc) tl
+        | (n, el) :: tl -> aux (el :: acc) ((n - 1, el) :: tl)
+    in
+    aux [] list
+        |> List.rev
 ;;
 assert (decode [(4, "a"); (1, "b"); (2, "c"); (2, "a"); (1, "d"); (4, "e")]
 = ["a"; "a"; "a"; "a"; "b"; "c"; "c"; "a"; "a"; "d"; "e"; "e"; "e"; "e"]);;
@@ -122,9 +133,13 @@ assert (decode [(4, "a"); (1, "b"); (2, "c"); (2, "a"); (1, "d"); (4, "e")]
 (* Duplicate the Elements of a List *)
 (* Beginner difficulty *)
 (* Duplicate the elements of a list. *)
-let rec duplicate = function
-    | [] -> []
-    | hd :: tl -> hd :: hd :: duplicate tl
+let duplicate list =
+    let rec aux acc = function
+        | [] -> acc
+        | hd :: tl -> aux (hd :: hd :: acc) tl
+    in
+    aux [] list
+        |> List.rev
 ;;
 assert (duplicate ["a"; "b"; "c"; "c"; "d"] = ["a"; "a"; "b"; "b"; "c"; "c"; "c"; "c"; "d"; "d"]);;
 
@@ -132,13 +147,13 @@ assert (duplicate ["a"; "b"; "c"; "c"; "d"] = ["a"; "a"; "b"; "b"; "c"; "c"; "c"
 (* Intermediate difficulty *)
 (* Replicate the elements of a list a given number of times. *)
 let rec replicate list n =
-    let rec repeat el n =
-        if n = 0 then []
-        else el :: repeat el (n - 1)
+    let rec aux acc m = function
+        | [] -> acc
+        | hd :: tl when m = 0 -> aux acc n tl
+        | hd :: tl as l -> aux (hd :: acc) (m - 1) l
 in
-    match list with
-    | [] -> []
-    | hd :: tl -> (repeat hd n) @ (replicate tl n)
+    aux [] n list
+        |> List.rev
 ;;
 assert (replicate ["a"; "b"; "c"] 3 = ["a"; "a"; "a"; "b"; "b"; "b"; "c"; "c"; "c"]);;
 
@@ -146,14 +161,13 @@ assert (replicate ["a"; "b"; "c"] 3 = ["a"; "a"; "a"; "b"; "b"; "b"; "c"; "c"; "
 (* Intermediate difficulty *)
 (* Drop every N'th element from a list. *)
 let drop list n =
-    let rec aux i = function
-        | [] -> []
-        | hd :: tl ->
-                if i = 1
-                then aux n tl 
-                else hd :: aux (i - 1) tl
+    let rec aux acc i = function
+        | [] -> acc
+        | hd :: tl when i = 1 -> aux acc n tl 
+        | hd :: tl -> aux (hd :: acc) (i - 1) tl
 in
-    aux n list
+    aux [] n list
+        |> List.rev
 ;;
 assert (drop ["a"; "b"; "c"; "d"; "e"; "f"; "g"; "h"; "i"; "j"] 3 = ["a"; "b"; "d"; "e"; "g"; "h"; "j"]);;
 
@@ -161,14 +175,15 @@ assert (drop ["a"; "b"; "c"; "d"; "e"; "f"; "g"; "h"; "i"; "j"] 3 = ["a"; "b"; "
 (* Beginner difficulty *)
 (* Split a list into two parts; the length of the first part is given. *)
 (* If the length of the first part is longer than the entire list, then the first part is the list and the second part is empty. *)
-let rec split list n =
-    match (list, n) with
-    | ([], _) -> ([], [])
-    | (hd :: tl, 0) -> ([], list)
-    | (hd :: tl, _) ->
-            match split tl (n - 1) with
-            | ([], stl)  -> ([hd], stl)
-            | (shd, stl) -> (hd :: shd, stl)
+let split list n =
+    let rec aux acc1 acc2 list n =
+        match (list, n) with
+        | ([], _) -> (acc1, acc2)
+        | (hd :: tl, 0) -> aux acc1 (hd :: acc2) tl 0
+        | (hd :: tl, _) -> aux (hd :: acc1) acc2 tl (n - 1)
+    in
+    let (a, b) = aux [] [] list n in
+    (List.rev a, List.rev b)
 ;;
 assert (split ["a"; "b"; "c"; "d"; "e"; "f"; "g"; "h"; "i"; "j"] 3 = (["a"; "b"; "c"], ["d"; "e"; "f"; "g"; "h"; "i"; "j"]));;
 assert (split ["a"; "b"; "c"; "d"] 5 = (["a"; "b"; "c"; "d"], []));;
@@ -178,12 +193,15 @@ assert (split ["a"; "b"; "c"; "d"] 5 = (["a"; "b"; "c"; "d"], []));;
 (* Given two indices, i and k, the slice is the list containing the elements 
    between the i'th and k'th element of the original list (both limits included). *)
 (* Start counting the elements with 0 (this is the way the List module numbers elements). *)
-let rec slice list a b =
-    match (list, a, b) with
-    | (hd :: tl, 0, 0) -> [hd]
-    | (hd :: tl, 0, b) -> hd :: slice tl 0 (b - 1)
-    | (hd :: tl, a, b) -> slice tl (a - 1) (b - 1)
-    | ([], _, _) -> raise (Failure "slice: index out of bounds")
+let slice list a b =
+    let rec aux acc list a b =
+        match (list, a, b) with
+        | (hd :: tl, 0, 0) -> hd :: acc
+        | (hd :: tl, 0, b) -> aux (hd :: acc) tl 0 (b - 1)
+        | (hd :: tl, a, b) -> aux acc tl (a - 1) (b - 1)
+        | ([], _, _) -> raise (Failure "slice: index out of bounds")
+    in
+    List.rev (aux [] list a b)
 ;;
 assert (slice ["a"; "b"; "c"; "d"; "e"; "f"; "g"; "h"; "i"; "j"] 2 6 = ["c"; "d"; "e"; "f"; "g"]);;
 
