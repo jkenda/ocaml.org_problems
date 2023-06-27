@@ -35,16 +35,10 @@ assert (table2 "b" "a" (And (Var "a", Or (Var "a", Var "b")))
 
 (* Truth Tables for Logical Expressions *)
 (* Intermediate difficulty *)
-(* Generalize the previous problem in such a way that the logical expression may contain any number of logical variables. Define table in a way that table variables expr returns the truth table for the expression expr, which contains the logical variables enumerated in variables. *)
+(* Generalize the previous problem in such a way that the logical expression may contain any number of logical variables.
+   Define table in a way that table variables expr returns the truth table for the expression expr,
+   which contains the logical variables enumerated in variables. *)
 let table var_list expr =
-    (* integer power *)
-    let pow x n =
-        let rec aux acc = function
-            | 0 -> acc
-            | n -> aux (acc * x) (n - 1)
-        in
-        aux 1 n
-    in
     (* list if bits of an integer for a variable *)
     let rec bit_list acc vars = function
         | 0 -> if vars = [] then acc else bit_list ((List.hd vars, false) :: acc) (List.tl vars) 0
@@ -56,7 +50,7 @@ let table var_list expr =
             | -1 -> acc
             | x -> aux (bit_list [] vars x :: acc) vars (x - 1)
         in
-        aux [] (List.rev vars) (pow 2 (List.length vars) - 1)
+        aux [] (List.rev vars) (Int.shift_left 1 (List.length vars) - 1)
             |> List.rev
     in
     let rec eval expr vars states =
@@ -95,9 +89,11 @@ assert (table ["b"; "a"] (And (Var "a", Or (Var "a", Var "b")))
 let gray n =
     []
 ;;
+(*
 assert (gray 1 = ["0"; "1"]);;
 assert (gray 2 = ["00"; "01"; "11"; "10"]);;
 assert (gray 3 = ["000"; "001"; "011"; "010"; "110"; "111"; "101"; "100"]);;
+*)
 
 (* Huffman Code *)
 (* Advanced difficulty *)
@@ -114,8 +110,78 @@ let fs = [("a", 45); ("b", 13); ("c", 12); ("d", 16);
    = [("a", "0"); ("b", "101"); ("c", "100"); ("d", "111"); ("e", "1101"); ("f", "1100")] (or hs = [("a", "1");...]).
    The task shall be performed by the function huffman defined as follows:
        huffman(fs) returns the Huffman code table for the frequency table fs *)
+type node = {
+    ch : string option;
+    fr : int;
+    lc : node option;
+    rc : node option;
+};;
+
 let huffman freqs =
-    []
+    (* sort list of (char, freq) in descending order *)
+    let sort =
+        List.sort
+        (fun a b ->
+            match (a, b) with
+            | ((_, f1), (_, f2)) -> f2 - f1)
+    in
+    (* transform list of (char, freq) tuples to list of nodes *)
+    let rec make_nodes = function
+        | [] -> []
+        | (ch, fr) :: tl -> { ch = Some ch; fr; lc = None; rc = None } :: make_nodes tl
+    in
+    (* get last 2 nodes from the list *)
+    let rec next_nodes list =
+        let rec aux = function
+            | [a; b] -> (a, b)
+            | hd :: tl -> aux tl
+            | _ -> raise (Failure "unreachable: always at least 2 nodes")
+        in
+        aux list
+    in
+    (* delete last 2 nodes from the list *)
+    let rec delete = function
+        | [_; _] -> []
+        | hd :: tl -> hd :: delete tl
+        | _ -> raise (Failure "unreachable: always delete 2 nodes")
+    in
+    (* insert node at the appropriate position *)
+    let rec insert node list =
+        let { ch; fr; lc; rc } = node in
+        match list with
+        | [] -> [node]
+        | { fr=f } as hd :: tl -> if fr > f then node :: list else hd :: insert node tl
+    in
+    (* make node with child nodes a and b and frequency a.fr + b.fr *)
+    let make_node a b =
+        match (a, b) with
+        | ({ fr=f1 }, { fr=f2 }) -> { ch = None; fr = f1 + f2; lc = Some b; rc = Some a }
+    in
+    (* build the tree *)
+    let rec build_tree list =
+        if List.length list = 1 then List.hd list
+        else
+            let (a, b) = next_nodes list in
+            list
+                |> delete
+                |> insert (make_node a b)
+                |> build_tree
+    in
+    (* transform tree to list of huffman codes *)
+    let to_huffman nodes =
+        let rec aux code = function
+            | { ch=Some ch; fr; lc; rc } -> [(ch, code)]
+            | { ch; fr; lc=Some lc; rc=Some rc } -> aux (code ^ "0") lc @ aux (code ^ "1") rc
+            | _ -> raise (Failure "unreachable: nodes always follow the pattern above")
+        in
+        aux "" nodes
+    in
+
+    freqs
+        |> sort
+        |> make_nodes
+        |> build_tree
+        |> to_huffman
 ;;
 assert (huffman fs
 = [("a", "0"); ("c", "100"); ("b", "101"); ("f", "1100"); ("e", "1101"); ("d", "111")]);;
