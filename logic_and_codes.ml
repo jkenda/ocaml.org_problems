@@ -205,51 +205,63 @@ let encode message =
         in
         String.fold_left insert [] string
     in
+    (* put most common characters first *)
+    let sort =
+        List.sort
+        (fun a b ->
+                match (a, b) with
+                | ((_, c1), (_, c2)) -> String.length c1 - String.length c2)
+    in
+    (* buffer for building strings *)
+    let buffer = Buffer.create (String.length message) in
     (* encode mesage with huffman *)
     let to_code huffman =
-        let add_code string char =
+        let add_code char =
             let rec aux = function
-                | (ch, code) :: tl when ch = char -> string ^ code
+                | (ch, code) :: tl when ch = char -> Buffer.add_string buffer code
                 | hd :: tl -> aux tl
                 | [] -> raise (Failure "unreachable: code for char always exists")
             in
             aux huffman
         in
-        String.fold_left add_code "" message
+        String.iter add_code message;
+        Buffer.contents buffer
     in
     let _ = timeit "huffman" huffman (freqs message) in
 
     let huffman = message
                 |> freqs
-                |> huffman in
+                |> huffman
+                |> sort
+    in
     (huffman, to_code huffman)
 ;;
 
 (* decode huffman encoded message *)
 let decode encoded =
     let (huffman, code) = encoded in
+    (* find which char corresponds to the code in front *)
     let rec find_char encoded = function
-        | (ch, code) :: tl ->
-                let code_length = String.length code in
-                let length = Int.min code_length (String.length encoded) in
-                if code = String.sub encoded 0 length then
-                    (ch, code_length)
-                else
-                    find_char encoded tl
+        | (ch, code) :: tl when String.starts_with ~prefix:code encoded -> (ch, String.length code)
+        | _ :: tl -> find_char encoded tl
         | [] -> raise (Failure "unreachable: code for char always exists")
     in
-    let rec to_message acc = function
-        | "" -> acc
+    (* buffer for building strings *)
+    let buffer = Buffer.create (String.length code) in
+    (* decode message *)
+    let rec to_message = function
+        | "" -> Buffer.contents buffer
         | code ->
                 let (char, length) = find_char code huffman in
                 let code = String.sub code length (String.length code - length) in
-                to_message (acc ^ String.make 1 char) code
+                Buffer.add_char buffer char;
+                to_message code
     in
 
-    to_message "" code
+    to_message code
 ;;
 
-let message = "
+let maja = "
 Ogrlico nosila
 je moja vila
 zato so jo klicali vsi
@@ -309,14 +321,14 @@ vsaj enkrat smo v življenju vsi
 Maja z biseri…”
 ";;
 
-let (huffman, code) as encoded = encode message;;
+let (huffman, code) as encoded = encode maja;;
 
-let message_size = String.length message * 8 in
+let message_size = String.length maja * 8 in
 let encoded_size = List.fold_left (fun sum -> function | (ch, code) -> sum + 8 + String.length code) 0 huffman + String.length code in
 Format.printf "message size: %d b\nencoded size: %d b\ncompression ratio: %f\n"
     message_size encoded_size (Int.to_float encoded_size /. Int.to_float message_size);;
 
-assert (decode encoded = message);;
+assert (decode encoded = maja);;
 
-timeit "encode" encode message;;
+timeit "encode" encode maja;;
 timeit "decode" decode encoded;;
