@@ -106,7 +106,7 @@ let encode list =
         | [] -> acc
         | hd :: tl ->
                 match acc with
-                | (n, en_el) :: en_tl when en_el = hd -> aux ((n+1, en_el) :: en_tl) tl
+                | (n, en_el) :: en_tl when en_el = hd -> aux ((n + 1, en_el) :: en_tl) tl
                 | _ as en_l -> aux ((1, hd) :: en_l) tl
     in
     aux [] list

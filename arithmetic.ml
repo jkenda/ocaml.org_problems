@@ -3,10 +3,57 @@
 (* Determine Whether a Given Integer Number Is Prime *)
 (* Intermediate difficulty *)
 (* Determine whether a given integer number is prime. *)
-let is_prime n =
+let is_prime_simple n =
     let rec is_not_divisor d =
-        d * d > n || (n mod d != 0 && is_not_divisor (d + 1)) in
+        d * d > n || (n mod d != 0 && is_not_divisor (d + 1))
+    in
     n != 1 && is_not_divisor 2
+;;
+let is_prime_eratostenes primes n =
+    let rec is_not_divisor n = function
+        [] -> true
+        | hd :: tl when hd * hd > n -> true
+        | hd :: tl -> n mod hd != 0 && is_not_divisor n tl
+    in
+    let append list n =
+        List.rev_append (List.rev list) [n]
+    in
+    let rec last = function
+        | [] -> raise (Failure "empty list does not have a last element")
+        | [n] -> n
+        | hd :: tl -> last tl
+    in
+    let find_primes primes lower upper =
+        let next_odd n =
+            if n mod 2 = 1 then n + 2 else n + 1
+        in
+        let rec aux c = function
+            | _ as primes when c > upper -> primes
+            | _ as primes ->
+                    (* let _ = Format.printf "%d\n" c in *)
+                    if is_not_divisor c primes then
+                        aux (c + 2) (append primes c)
+                    else aux (c + 2) primes
+        in
+        aux (next_odd lower) primes
+    in
+    match n with
+    | _ when n <= 0 -> raise (Failure "primes are only defined for numbers >0")
+    | 1 | 4 -> ([2; 3], false)
+    | 2 | 3 -> ([2; 3], true)
+    | _ -> 
+            let primes = if primes = [] then [2; 3] else primes in
+            let primes = find_primes primes (last primes) (Int.to_float n |> Float.sqrt |> Float.to_int) in
+            let is_prime = is_not_divisor n primes in
+            let primes = if is_prime then append primes n else primes in
+            (primes, is_prime)
+;;
+let is_prime n =
+    if n < 1_000_000 then
+        is_prime_simple n
+    else
+        let (primes, is_prime) = is_prime_eratostenes [] n in
+        is_prime
 ;;
 assert (not (is_prime 1));;
 assert (is_prime 7);;
@@ -63,6 +110,11 @@ let factors n =
     in
     aux n 2
 ;;
+assert (factors 2 = [2]);;
+assert (factors 3 = [3]);;
+assert (factors 4 = [2; 2]);;
+assert (factors 5 = [5]);;
+assert (factors 10 = [2; 5]);;
 assert (factors 315 = [3; 3; 5; 7]);;
 
 (* Calculate Euler's Totient Function Φ(m) (Improved) *)
@@ -92,28 +144,31 @@ let rec phi_improved x =
 assert (phi_improved 10 = 4);;
 assert (phi_improved 13 = 12);;
 
-let timeit f f_name arg =
+let timeit f_name f arg =
     let open Format in
     let t0 = Sys.time () in
-    let result = f arg in
+    let _ = f arg in
     let t1 = Sys.time () in
-    printf "%d; %f ms <- %s\n" result ((t1 -. t0) *. 1000.) f_name;;
+    printf "%f ms <- %s\n" ((t1 -. t0) *. 1000.) f_name;;
 ;;
 let integer = 1234567;;
-timeit phi "phi" integer;;
-timeit phi_improved "phi_improved" integer;;
+timeit "phi" phi integer;;
+timeit "phi_improved" phi_improved integer;;
 
 (* A List of Prime Numbers *)
 (* Beginner difficulty *)
 (* Given a range of integers by its lower and upper limit, construct a list of all prime numbers in that range. *)
 let all_primes lower upper =
-    let rec aux acc = function
-        | n when n > upper -> acc
-        | n -> if is_prime n then aux (n :: acc) (n + 1) else aux acc (n + 1)
+    let rec discard_lower = function
+        | [] -> []
+        | hd :: tl as ls when hd >= lower -> ls
+        | hd :: tl -> discard_lower tl
     in
-    aux [] lower
+    let (primes, _) = is_prime_eratostenes [] (upper * upper) in
+    discard_lower primes
 ;;
 assert (List.length (all_primes 2 7920) = 1000);;
+timeit  "all_primes 2 7920" (all_primes 2) 7920
 
 (* Goldbach's Conjecture *)
 (* Intermediate difficulty *)

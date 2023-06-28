@@ -9,13 +9,13 @@ type bool_expr =
 ;;
 
 (* A logical expression in two variables can then be written in prefix notation. For example, (a ∨ b) ∧ (a ∧ b) is written: *)
-And (Or (Var "a", Var "b"), And (Var "a", Var "b"));;
+And (Or (Var "a", Var "b"), Not (And (Var "a", Var "b")));;
 
 (* Define a function, table2 which returns the truth table of a given logical expression in two variables (specified as arguments).
    The return value must be a list of triples containing (value_of_a, value_of_b, value_of_expr). *)
 let table2 a b expr =
     let rec eval b1 b2 = function
-        | Var v -> if v = a then b1 else b2
+        | Var v -> if v = a then b1 else if v = b then b2 else raise (Failure "unreachable")
         | Not x -> not (eval b1 b2 x)
         | And (x, y) -> eval b1 b2 x && eval b1 b2 y
         | Or  (x, y) -> eval b1 b2 x || eval b1 b2 y
@@ -60,7 +60,7 @@ let table var_list expr =
         | Or  (x, y) -> eval x vars states || eval y vars states
         | Var v as expr ->
                 match states with
-                | (var, state) :: states when v = var -> state
+                | (var, state) :: _ when v = var -> state
                 | _ :: states -> eval expr vars states
                 | _ -> raise (Failure "invalid state")
     in
@@ -87,13 +87,21 @@ assert (table ["b"; "a"] (And (Var "a", Or (Var "a", Var "b")))
 (* Find out the construction rules and write a function with the following specification:
     gray n returns the n-bit Gray code. *)
 let gray n =
-    []
+    let rec next_level k l =
+        if k < n then
+            let (first_half, second_half) =
+                List.fold_left (fun (acc1, acc2) x ->
+                    (("0" ^ x) :: acc1, ("1" ^ x) :: acc2)) ([], []) l
+            in
+            next_level (k + 1) (List.rev_append first_half second_half)
+        else l
+    in
+    next_level 1 ["0"; "1"]
 ;;
-(*
 assert (gray 1 = ["0"; "1"]);;
 assert (gray 2 = ["00"; "01"; "11"; "10"]);;
 assert (gray 3 = ["000"; "001"; "011"; "010"; "110"; "111"; "101"; "100"]);;
-*)
+
 
 (* Huffman Code *)
 (* Advanced difficulty *)
@@ -130,41 +138,38 @@ let huffman freqs =
     in
     (* get first 2 nodes from the list *)
     let next_nodes = function
-        | a :: b :: tl -> (a, b)
+        | a :: b :: _ -> (a, b)
         | _ -> raise (Failure "unreachable: always at least 2 nodes")
     in
     (* delete first 2 nodes from the list *)
     let delete = function
-        | a :: b :: tl -> tl
+        | _ :: _ :: tl -> tl
         | _ -> raise (Failure "unreachable: always delete 2 nodes")
     in
     (* insert node at the appropriate position *)
-    let rec insert node list =
-        let { fr } = node in
-        match list with
+    let rec insert ({ ch=_; fr; lc=_; rc=_ } as node) = function
         | [] -> [node]
-        | { fr=f } as hd :: tl -> if fr < f then node :: list else hd :: insert node tl
+        | { ch=_; fr=f; lc=_; rc=_ } as hd :: tl as ls -> if fr < f then node :: ls else hd :: insert node tl
     in
     (* make node with child nodes a and b and frequency a.fr + b.fr *)
-    let make_node a b =
-        match (a, b) with
-        | ({ fr=f1 }, { fr=f2 }) -> { ch = None; fr = f1 + f2; lc = Some a; rc = Some b }
+    let make_node (({ ch=_; fr=f1; lc=_; rc=_ } as a), ({ ch=_; fr=f2; lc=_; rc=_ } as b)) =
+        { ch = None; fr = f1 + f2; lc = Some a; rc = Some b }
     in
     (* build tree *)
     let rec build_tree list =
         if List.length list = 1 then List.hd list
         else
-            let (a, b) = next_nodes list in
+            let nodes = next_nodes list in
             list
                 |> delete
-                |> insert (make_node a b)
+                |> insert (make_node nodes)
                 |> build_tree
     in
     (* transform tree to list of huffman codes *)
     let to_huffman nodes =
         let rec aux code = function
-            | { ch=Some ch } -> [(ch, code)]
-            | { lc=Some lc; rc=Some rc } -> aux (code ^ "0") lc @ aux (code ^ "1") rc
+            | { ch=Some ch; fr=_; lc=None; rc=None } -> [(ch, code)]
+            | { ch=None; fr=_; lc=Some lc; rc=Some rc } -> aux (code ^ "0") lc @ aux (code ^ "1") rc
             | _ -> raise (Failure "unreachable: nodes always follow the pattern above")
         in
         aux "" nodes
@@ -181,14 +186,6 @@ assert (huffman fs
 
 (* My own additions *)
 
-let timeit f_name f arg =
-    let open Format in
-    let t0 = Sys.time () in
-    let _ = f arg in
-    let t1 = Sys.time () in
-    printf "%f ms <- %s\n" ((t1 -. t0) *. 1000.) f_name;;
-;;
-
 (* Encode mesage with huffman *)
 let encode message =
     (* calculate frequencies of characters *)
@@ -196,7 +193,7 @@ let encode message =
         let insert list char =
             let rec aux = function
                 | [] -> [(char, ref 1)]
-                | (ch, cnt) :: tl as ls when ch = char -> cnt := !cnt + 1; ls
+                | (ch, cnt) :: _ as ls when ch = char -> cnt := !cnt + 1; ls
                 | hd :: tl -> hd :: aux tl
             in
             aux list
@@ -215,8 +212,8 @@ let encode message =
     let to_code huffman =
         let add_code char =
             let rec aux = function
-                | (ch, code) :: tl when ch = char -> Buffer.add_string buffer code
-                | hd :: tl -> aux tl
+                | (ch, code) :: _ when ch = char -> Buffer.add_string buffer code
+                | _ :: tl -> aux tl
                 | [] -> raise (Failure "unreachable: code for char always exists")
             in
             aux huffman
@@ -224,7 +221,7 @@ let encode message =
         String.iter add_code message;
         Buffer.contents buffer
     in
-    let _ = timeit "huffman" huffman (freqs message) in
+    let _ = let open Tools in timeit "huffman" huffman (freqs message) in
 
     let huffman = message
                 |> freqs
@@ -239,7 +236,7 @@ let decode encoded =
     let (dict, code) = encoded in
     (* find which char corresponds to the code in front *)
     let rec find_char encoded = function
-        | (ch, code) :: tl when String.starts_with ~prefix:code encoded -> (ch, String.length code)
+        | (ch, code) :: _ when String.starts_with ~prefix:code encoded -> (ch, String.length code)
         | _ :: tl -> find_char encoded tl
         | [] -> raise (Failure "unreachable: code for char always exists")
     in
@@ -261,73 +258,43 @@ let decode encoded =
 ;;
 
 let maja = "
-Ogrlico nosila
-je moja vila
-zato so jo klicali vsi
-Maja z biseri,
-Maja z biseri.
+Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ac ut consequat semper viverra nam libero justo laoreet sit. Ante in nibh mauris cursus. Quam viverra orci sagittis eu volutpat odio facilisis mauris sit. Dui vivamus arcu felis bibendum ut tristique. Vitae auctor eu augue ut lectus arcu bibendum. Duis at consectetur lorem donec massa sapien faucibus et molestie. Ac tincidunt vitae semper quis lectus nulla at volutpat. Tempus egestas sed sed risus pretium quam vulputate. Luctus venenatis lectus magna fringilla urna porttitor. Sollicitudin nibh sit amet commodo. Facilisis mauris sit amet massa vitae tortor condimentum lacinia quis. Dolor sit amet consectetur adipiscing. Libero id faucibus nisl tincidunt eget. Auctor urna nunc id cursus metus aliquam eleifend mi in. Massa massa ultricies mi quis hendrerit dolor magna eget. Sed egestas egestas fringilla phasellus faucibus scelerisque eleifend donec pretium. Risus in hendrerit gravida rutrum quisque. Sed vulputate mi sit amet mauris commodo quis imperdiet massa. Ut lectus arcu bibendum at varius vel pharetra vel.
 
-Obraz kot s španske slike,
-oči velike,
-nasmehi pa kot čudeži,
-Maja z biseri,
-Maja z biseri.
+Scelerisque in dictum non consectetur a erat. Commodo quis imperdiet massa tincidunt nunc pulvinar sapien et ligula. Ultricies tristique nulla aliquet enim tortor at auctor urna nunc. Arcu non odio euismod lacinia at quis risus sed vulputate. Fermentum et sollicitudin ac orci phasellus egestas. Eu sem integer vitae justo eget. Pharetra et ultrices neque ornare aenean euismod elementum. Egestas egestas fringilla phasellus faucibus. Scelerisque purus semper eget duis at tellus at urna condimentum. Ut etiam sit amet nisl. Consectetur a erat nam at. Lectus arcu bibendum at varius. At tempor commodo ullamcorper a lacus vestibulum. At imperdiet dui accumsan sit amet nulla facilisi. Sit amet massa vitae tortor condimentum lacinia quis vel.
 
-Ljudje, ki so jo kdaj poznali,
-vzljubili so jo slej ko prej,
-da vsak je biser so dejali,
-simbol lepote, skrite v njej.
+Dictum fusce ut placerat orci nulla pellentesque dignissim enim. Massa tincidunt dui ut ornare lectus. Habitasse platea dictumst vestibulum rhoncus est pellentesque. Curabitur vitae nunc sed velit dignissim sodales ut. Vel risus commodo viverra maecenas accumsan. Pharetra et ultrices neque ornare aenean euismod. Varius sit amet mattis vulputate. Dui sapien eget mi proin sed libero enim. Tristique sollicitudin nibh sit amet commodo nulla. Eu consequat ac felis donec et odio pellentesque.
 
-Živeti je začela
-in prekipela,
-da v nič so se razblinjali
-njeni biseri,
-njeni biseri.
+Sed faucibus turpis in eu mi bibendum. Neque laoreet suspendisse interdum consectetur libero. Eget nulla facilisi etiam dignissim diam quis enim lobortis scelerisque. Lacus sed turpis tincidunt id aliquet risus feugiat in. Nibh sit amet commodo nulla facilisi nullam vehicula. Donec ultrices tincidunt arcu non sodales. Et ultrices neque ornare aenean euismod. Orci eu lobortis elementum nibh tellus. Hac habitasse platea dictumst vestibulum rhoncus est pellentesque elit ullamcorper. Pellentesque nec nam aliquam sem et. Vitae aliquet nec ullamcorper sit. Ac felis donec et odio pellentesque. Ornare lectus sit amet est.
 
-Srce je neugnano
-in razigrano,
-ko Maja v sladko noč beži
-skupaj z biseri,
-skupaj z biseri.
+Volutpat consequat mauris nunc congue nisi. Netus et malesuada fames ac turpis. At urna condimentum mattis pellentesque id nibh tortor id aliquet. A lacus vestibulum sed arcu non odio euismod lacinia. Tellus cras adipiscing enim eu turpis egestas pretium aenean. Integer enim neque volutpat ac tincidunt vitae semper quis lectus. Nisl tincidunt eget nullam non nisi. Viverra suspendisse potenti nullam ac tortor vitae purus faucibus. Urna molestie at elementum eu. Nisi scelerisque eu ultrices vitae auctor eu augue. Neque egestas congue quisque egestas diam in arcu cursus euismod. Vitae congue eu consequat ac. Auctor eu augue ut lectus arcu bibendum. A lacus vestibulum sed arcu non. Egestas quis ipsum suspendisse ultrices gravida.
 
-In bolj, ko srečo vsem razdaja,
-manj sreče Maja zase ima,
-da vedno krajši niz postaja
-prepozno, kakor vsak spozna.
+Tincidunt eget nullam non nisi est sit amet facilisis magna. Placerat orci nulla pellentesque dignissim enim sit. Integer quis auctor elit sed. Maecenas pharetra convallis posuere morbi leo urna molestie at. Eget duis at tellus at urna condimentum mattis. Diam sit amet nisl suscipit. Quis ipsum suspendisse ultrices gravida dictum. Suspendisse ultrices gravida dictum fusce ut placerat. Dignissim cras tincidunt lobortis feugiat vivamus at augue eget arcu. Rhoncus dolor purus non enim praesent elementum facilisis leo vel. Auctor augue mauris augue neque gravida in fermentum et sollicitudin. Ante in nibh mauris cursus mattis molestie a iaculis at. Ultricies integer quis auctor elit. Suspendisse potenti nullam ac tortor vitae purus faucibus ornare. Ultricies tristique nulla aliquet enim tortor at auctor. Orci phasellus egestas tellus rutrum tellus pellentesque. Volutpat blandit aliquam etiam erat velit. Habitant morbi tristique senectus et.
 
-Zdaj tisoč milj od raja,
-v tančici Maja,
-vprašanj neskončnih se boji:
-“Kje so biseri,
-kje so biseri?”
+Sociis natoque penatibus et magnis dis parturient montes nascetur. Magna ac placerat vestibulum lectus mauris ultrices eros in cursus. Egestas congue quisque egestas diam in arcu. Urna neque viverra justo nec ultrices dui. Dictum sit amet justo donec enim diam vulputate ut. Justo donec enim diam vulputate ut pharetra. Pharetra pharetra massa massa ultricies mi quis hendrerit dolor magna. Vulputate dignissim suspendisse in est ante in nibh mauris. Vitae congue eu consequat ac felis donec et odio. Aliquam eleifend mi in nulla posuere sollicitudin. Amet facilisis magna etiam tempor orci eu lobortis.
 
-Ogrlico še eno,
-ponarejeno,
-je v žalosti kupila si,
-Maja z biseri,
-Maja z biseri.
+Rhoncus mattis rhoncus urna neque viverra justo. Egestas tellus rutrum tellus pellentesque eu tincidunt tortor. Nec nam aliquam sem et tortor consequat id. Eu scelerisque felis imperdiet proin. Bibendum ut tristique et egestas quis ipsum. Sed vulputate mi sit amet mauris commodo. Posuere urna nec tincidunt praesent semper feugiat nibh sed pulvinar. Pharetra massa massa ultricies mi quis hendrerit. Faucibus vitae aliquet nec ullamcorper sit amet risus nullam eget. Sit amet nisl purus in mollis nunc sed id. In eu mi bibendum neque egestas congue. In tellus integer feugiat scelerisque varius morbi enim nunc faucibus. Eros donec ac odio tempor orci dapibus ultrices in iaculis. Arcu dui vivamus arcu felis. Pellentesque eu tincidunt tortor aliquam. Duis tristique sollicitudin nibh sit. Sagittis aliquam malesuada bibendum arcu vitae elementum curabitur vitae. Mattis aliquam faucibus purus in massa tempor nec feugiat. Tellus in metus vulputate eu scelerisque felis. Aliquet eget sit amet tellus cras.
 
-A Maja le ni srečna,
-ne, ne, ni srečna,
-čeprav spet kličejo jo vsi
-“Maja z biseri,
-Maja z biseri”.
+Lacinia quis vel eros donec ac odio tempor. Dolor sit amet consectetur adipiscing. Pellentesque adipiscing commodo elit at imperdiet dui accumsan sit amet. Sit amet facilisis magna etiam tempor orci. Sed sed risus pretium quam. Vel pretium lectus quam id. Pellentesque habitant morbi tristique senectus et netus et. Risus nullam eget felis eget nunc lobortis. Nisl nisi scelerisque eu ultrices vitae auctor eu. Placerat orci nulla pellentesque dignissim enim. Sagittis purus sit amet volutpat consequat mauris nunc. Integer eget aliquet nibh praesent. Ut morbi tincidunt augue interdum.
 
-A kaj, ko vsi smo skupaj,
-vsi smo kot Maja,
-vsaj enkrat smo v življenju vsi
-“Maja z biseri,
-Maja z biseri…”
+Vitae et leo duis ut diam quam. Rutrum quisque non tellus orci ac. Lectus sit amet est placerat in egestas erat. Velit egestas dui id ornare arcu odio ut sem nulla. Semper risus in hendrerit gravida rutrum quisque. Erat nam at lectus urna duis convallis convallis tellus id. Magna eget est lorem ipsum dolor sit amet consectetur. Lectus nulla at volutpat diam ut. Ornare lectus sit amet est placerat. Posuere ac ut consequat semper.
+
+Pellentesque adipiscing commodo elit at imperdiet dui accumsan sit amet. Quis hendrerit dolor magna eget est lorem ipsum. At lectus urna duis convallis convallis. Integer eget aliquet nibh praesent tristique. Mattis molestie a iaculis at erat pellentesque adipiscing. Nunc vel risus commodo viverra maecenas accumsan. Dapibus ultrices in iaculis nunc sed augue lacus viverra. At elementum eu facilisis sed odio. Eget duis at tellus at. Dui faucibus in ornare quam viverra orci sagittis eu. Sed viverra tellus in hac habitasse.
+
+Dui faucibus in ornare quam viverra orci sagittis eu volutpat. Volutpat lacus laoreet non curabitur gravida arcu ac tortor. Nunc mattis enim ut tellus. Sollicitudin ac orci phasellus egestas tellus rutrum tellus. In iaculis nunc sed augue lacus viverra vitae. Ut sem viverra aliquet eget sit. Ac tortor vitae purus faucibus. Ac orci phasellus egestas tellus rutrum tellus. Dictum varius duis at consectetur lorem donec massa. Eu consequat ac felis donec et. Phasellus faucibus scelerisque eleifend donec. Mauris pharetra et ultrices neque ornare aenean euismod. Leo duis ut diam quam nulla. Risus at ultrices mi tempus imperdiet. Vulputate eu scelerisque felis imperdiet.
+
+Commodo odio aenean sed adipiscing diam donec adipiscing tristique. A arcu cursus vitae congue mauris rhoncus aenean vel elit. Nullam non nisi est sit amet facilisis. Egestas tellus rutrum tellus pellentesque eu tincidunt tortor. Aliquet nibh praesent tristique magna sit amet. Lobortis elementum nibh tellus molestie nunc non blandit. Porttitor eget dolor morbi non arcu risus quis varius. Id diam maecenas ultricies mi eget mauris pharetra et. Arcu cursus vitae congue mauris rhoncus. Convallis aenean et tortor at risus viverra adipiscing at in. Ac tincidunt vitae semper quis lectus nulla at volutpat diam. Convallis convallis tellus id interdum velit laoreet id.
 ";;
 
 let (huffman, code) as encoded = encode maja;;
 
 let message_size = String.length maja * 8 in
-let encoded_size = List.fold_left (fun sum (ch, code) -> sum + 8 + String.length code) 0 huffman + String.length code in
+let encoded_size = List.fold_left (fun sum (_, code) -> sum + 8 + String.length code) 0 huffman + String.length code in
 Format.printf "message size: %d b\nencoded size: %d b\ncompression ratio: %f\n"
     message_size encoded_size (Int.to_float encoded_size /. Int.to_float message_size);;
 
 assert (decode encoded = maja);;
 
-timeit "encode" encode maja;;
+let open Tools in
+timeit "encode" encode maja;
 timeit "decode" decode encoded;;
+
