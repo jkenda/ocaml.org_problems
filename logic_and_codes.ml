@@ -123,7 +123,7 @@ type 'a node =
     | Node of int * 'a node * 'a node
 ;;
 let freq = function
-    | Leaf (fr, _) -> fr
+    | Leaf (fr, _)
     | Node (fr, _, _) -> fr
 ;;
 
@@ -138,27 +138,28 @@ let huffman freqs =
         | [] -> []
         | (ch, fr) :: tl -> Leaf (fr, ch) :: make_nodes tl
     in
-    (* get first 2 nodes from the list *)
-    let next_nodes = function
-        | a :: b :: _ -> (a, b)
-        | _ -> raise (Failure "unreachable: always at least 2 nodes")
-    in
-    (* delete first 2 nodes from the list *)
-    let delete = function
-        | _ :: _ :: tl -> tl
-        | _ -> raise (Failure "unreachable: always delete 2 nodes")
-    in
-    (* insert node at the appropriate position *)
-    let rec insert node = function
-        | [] -> [node]
-        | hd :: tl as ls -> if freq node < freq hd then node :: ls else hd :: insert node tl
-    in
-    (* make node with child nodes a and b and frequency a.fr + b.fr *)
-    let make_node (a, b) =
-        Node (freq a + freq b, a, b)
-    in
     (* build tree *)
     let rec build_tree list =
+        (* get first 2 nodes from the list *)
+        let next_nodes = function
+            | a :: b :: _ -> (a, b)
+            | _ -> raise (Failure "unreachable: always at least 2 nodes")
+        in
+        (* delete first 2 nodes from the list *)
+        let delete = function
+            | _ :: _ :: tl -> tl
+            | _ -> raise (Failure "unreachable: always delete 2 nodes")
+        in
+        (* insert node at the appropriate position *)
+        let rec insert node = function
+            | [] -> [node]
+            | hd :: tl as ls -> if freq node < freq hd then node :: ls else hd :: insert node tl
+        in
+        (* make node with child nodes a and b and frequency a.fr + b.fr *)
+        let make_node (a, b) =
+            Node (freq a + freq b, a, b)
+        in
+
         if List.length list = 1 then List.hd list
         else
             let new_node = make_node (next_nodes list) in
@@ -234,28 +235,31 @@ let encode message =
 
 (* decode huffman encoded message *)
 let decode encoded =
-    let (dict, code) = encoded in
-    (* find which char corresponds to the code in front *)
-    let rec find_char encoded = function
-        | (ch, code) :: _ when String.starts_with ~prefix:code encoded -> (ch, String.length code)
-        | _ :: tl -> find_char encoded tl
-        | [] -> raise (Failure "unreachable: code for char always exists")
-    in
-    let substring_after string n =
-        String.sub string n (String.length string - n)
+    let (dict, sequence) = encoded in
+    (* find char that matches the code *)
+    let rec find_char bits = function
+        | (char, code) :: _ when String.starts_with ~prefix:code bits -> Some char
+        | _ :: tl -> find_char bits tl
+        | [] -> None
     in
     (* buffer for building strings *)
-    let buffer = Buffer.create (String.length code) in
-    (* decode message *)
-    let rec to_message = function
-        | "" -> Buffer.contents buffer
-        | code ->
-                let (char, length) = find_char code dict in
-                Buffer.add_char buffer char;
-                to_message (substring_after code length)
+    let out_buffer = Buffer.create (String.length sequence) in
+    let bit_buffer = Buffer.create (List.length dict) in
+    (* build string from code *)
+    (* keep filling the bit buffer until it matches a char code, then
+        - add the corresponding char to the out buffer,
+        - clear the bit buffer *)
+    let build_code bit =
+        Buffer.add_char bit_buffer bit;
+        match find_char (Buffer.contents bit_buffer) dict with
+        | Some char ->
+                Buffer.add_char out_buffer char;
+                Buffer.clear bit_buffer
+        | None -> ()
     in
 
-    to_message code
+    String.iter build_code sequence;
+    Buffer.contents out_buffer
 ;;
 
 let lorem_ipsum = "
