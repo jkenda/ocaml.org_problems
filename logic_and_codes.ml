@@ -118,12 +118,14 @@ let fs = [("a", 45); ("b", 13); ("c", 12); ("d", 16);
    = [("a", "0"); ("b", "101"); ("c", "100"); ("d", "111"); ("e", "1101"); ("f", "1100")] (or hs = [("a", "1");...]).
    The task shall be performed by the function huffman defined as follows:
        huffman(fs) returns the Huffman code table for the frequency table fs *)
-type 'a node = {
-    ch : 'a option;
-    fr : int;
-    lc : 'a node option;
-    rc : 'a node option;
-};;
+type 'a node =
+    | Leaf of int * 'a
+    | Node of int * 'a node * 'a node
+;;
+let freq = function
+    | Leaf (fr, _) -> fr
+    | Node (fr, _, _) -> fr
+;;
 
 let huffman freqs =
     (* sort list of (char, freq) in ascending order *)
@@ -134,7 +136,7 @@ let huffman freqs =
     (* transform list of (char, freq) tuples to list of nodes *)
     let rec make_nodes = function
         | [] -> []
-        | (ch, fr) :: tl -> { ch = Some ch; fr; lc = None; rc = None } :: make_nodes tl
+        | (ch, fr) :: tl -> Leaf (fr, ch) :: make_nodes tl
     in
     (* get first 2 nodes from the list *)
     let next_nodes = function
@@ -147,30 +149,29 @@ let huffman freqs =
         | _ -> raise (Failure "unreachable: always delete 2 nodes")
     in
     (* insert node at the appropriate position *)
-    let rec insert ({ ch=_; fr; lc=_; rc=_ } as node) = function
+    let rec insert node = function
         | [] -> [node]
-        | { ch=_; fr=f; lc=_; rc=_ } as hd :: tl as ls -> if fr < f then node :: ls else hd :: insert node tl
+        | hd :: tl as ls -> if freq node < freq hd then node :: ls else hd :: insert node tl
     in
     (* make node with child nodes a and b and frequency a.fr + b.fr *)
-    let make_node (({ ch=_; fr=f1; lc=_; rc=_ } as a), ({ ch=_; fr=f2; lc=_; rc=_ } as b)) =
-        { ch = None; fr = f1 + f2; lc = Some a; rc = Some b }
+    let make_node (a, b) =
+        Node (freq a + freq b, a, b)
     in
     (* build tree *)
     let rec build_tree list =
         if List.length list = 1 then List.hd list
         else
-            let nodes = next_nodes list in
+            let new_node = make_node (next_nodes list) in
             list
                 |> delete
-                |> insert (make_node nodes)
+                |> insert new_node
                 |> build_tree
     in
     (* transform tree to list of huffman codes *)
     let to_huffman nodes =
         let rec aux code = function
-            | { ch=Some ch; fr=_; lc=None; rc=None } -> [(ch, code)]
-            | { ch=None; fr=_; lc=Some lc; rc=Some rc } -> aux (code ^ "0") lc @ aux (code ^ "1") rc
-            | _ -> raise (Failure "unreachable: nodes always follow the pattern above")
+            | Leaf (_, ch) -> [(ch, code)]
+            | Node (_, lc, rc) -> aux (code ^ "0") lc @ aux (code ^ "1") rc
         in
         aux "" nodes
     in
@@ -257,7 +258,7 @@ let decode encoded =
     to_message code
 ;;
 
-let maja = "
+let lorem_ipsum = "
 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ac ut consequat semper viverra nam libero justo laoreet sit. Ante in nibh mauris cursus. Quam viverra orci sagittis eu volutpat odio facilisis mauris sit. Dui vivamus arcu felis bibendum ut tristique. Vitae auctor eu augue ut lectus arcu bibendum. Duis at consectetur lorem donec massa sapien faucibus et molestie. Ac tincidunt vitae semper quis lectus nulla at volutpat. Tempus egestas sed sed risus pretium quam vulputate. Luctus venenatis lectus magna fringilla urna porttitor. Sollicitudin nibh sit amet commodo. Facilisis mauris sit amet massa vitae tortor condimentum lacinia quis. Dolor sit amet consectetur adipiscing. Libero id faucibus nisl tincidunt eget. Auctor urna nunc id cursus metus aliquam eleifend mi in. Massa massa ultricies mi quis hendrerit dolor magna eget. Sed egestas egestas fringilla phasellus faucibus scelerisque eleifend donec pretium. Risus in hendrerit gravida rutrum quisque. Sed vulputate mi sit amet mauris commodo quis imperdiet massa. Ut lectus arcu bibendum at varius vel pharetra vel.
 
 Scelerisque in dictum non consectetur a erat. Commodo quis imperdiet massa tincidunt nunc pulvinar sapien et ligula. Ultricies tristique nulla aliquet enim tortor at auctor urna nunc. Arcu non odio euismod lacinia at quis risus sed vulputate. Fermentum et sollicitudin ac orci phasellus egestas. Eu sem integer vitae justo eget. Pharetra et ultrices neque ornare aenean euismod elementum. Egestas egestas fringilla phasellus faucibus. Scelerisque purus semper eget duis at tellus at urna condimentum. Ut etiam sit amet nisl. Consectetur a erat nam at. Lectus arcu bibendum at varius. At tempor commodo ullamcorper a lacus vestibulum. At imperdiet dui accumsan sit amet nulla facilisi. Sit amet massa vitae tortor condimentum lacinia quis vel.
@@ -285,16 +286,16 @@ Dui faucibus in ornare quam viverra orci sagittis eu volutpat. Volutpat lacus la
 Commodo odio aenean sed adipiscing diam donec adipiscing tristique. A arcu cursus vitae congue mauris rhoncus aenean vel elit. Nullam non nisi est sit amet facilisis. Egestas tellus rutrum tellus pellentesque eu tincidunt tortor. Aliquet nibh praesent tristique magna sit amet. Lobortis elementum nibh tellus molestie nunc non blandit. Porttitor eget dolor morbi non arcu risus quis varius. Id diam maecenas ultricies mi eget mauris pharetra et. Arcu cursus vitae congue mauris rhoncus. Convallis aenean et tortor at risus viverra adipiscing at in. Ac tincidunt vitae semper quis lectus nulla at volutpat diam. Convallis convallis tellus id interdum velit laoreet id.
 ";;
 
-let (huffman, code) as encoded = encode maja;;
+let (huffman, code) as encoded = encode lorem_ipsum;;
 
-let message_size = String.length maja * 8 in
+let message_size = String.length lorem_ipsum * 8 in
 let encoded_size = List.fold_left (fun sum (_, code) -> sum + 8 + String.length code) 0 huffman + String.length code in
 Format.printf "message size: %d b\nencoded size: %d b\ncompression ratio: %f\n"
     message_size encoded_size (Int.to_float encoded_size /. Int.to_float message_size);;
 
-assert (decode encoded = maja);;
+assert (decode encoded = lorem_ipsum);;
 
 let open Tools in
-timeit "encode" encode maja;
+timeit "encode" encode lorem_ipsum;
 timeit "decode" decode encoded;;
 
