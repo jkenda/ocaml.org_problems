@@ -110,11 +110,11 @@ let fs = [("a", 45); ("b", 13); ("c", 12); ("d", 16);
    = [("a", "0"); ("b", "101"); ("c", "100"); ("d", "111"); ("e", "1101"); ("f", "1100")] (or hs = [("a", "1");...]).
    The task shall be performed by the function huffman defined as follows:
        huffman(fs) returns the Huffman code table for the frequency table fs *)
-type node = {
-    ch : string option;
+type 'a node = {
+    ch : 'a option;
     fr : int;
-    lc : node option;
-    rc : node option;
+    lc : 'a node option;
+    rc : 'a node option;
 };;
 
 let huffman freqs =
@@ -181,3 +181,142 @@ let huffman freqs =
 assert (huffman fs
 = [("a", "0"); ("c", "100"); ("b", "101"); ("f", "1100"); ("e", "1101"); ("d", "111")]);;
 
+(* My own additions *)
+
+let timeit f_name f arg =
+    let open Format in
+    let t0 = Sys.time () in
+    let _ = f arg in
+    let t1 = Sys.time () in
+    printf "%f ms <- %s\n" ((t1 -. t0) *. 1000.) f_name;;
+;;
+
+(* Encode mesage with huffman *)
+let encode message =
+    (* calculate frequencies of characters *)
+    let freqs string =
+        let insert list char =
+            let rec aux = function
+                | [] -> [(char, 1)]
+                | (ch, count) :: tl when ch = char -> (ch, count + 1) :: tl
+                | hd :: tl -> hd :: aux tl
+            in
+            aux list
+        in
+        String.fold_left insert [] string
+    in
+    (* encode mesage with huffman *)
+    let to_code huffman =
+        let add_code string char =
+            let rec aux = function
+                | (ch, code) :: tl when ch = char -> string ^ code
+                | hd :: tl -> aux tl
+                | [] -> raise (Failure "unreachable: code for char always exists")
+            in
+            aux huffman
+        in
+        String.fold_left add_code "" message
+    in
+    let _ = timeit "huffman" huffman (freqs message) in
+
+    let huffman = message
+                |> freqs
+                |> huffman in
+    (huffman, to_code huffman)
+;;
+
+(* decode huffman encoded message *)
+let decode encoded =
+    let (huffman, code) = encoded in
+    let rec find_char encoded = function
+        | (ch, code) :: tl ->
+                let code_length = String.length code in
+                let length = Int.min code_length (String.length encoded) in
+                if code = String.sub encoded 0 length then
+                    (ch, code_length)
+                else
+                    find_char encoded tl
+        | [] -> raise (Failure "unreachable: code for char always exists")
+    in
+    let rec to_message acc = function
+        | "" -> acc
+        | code ->
+                let (char, length) = find_char code huffman in
+                let code = String.sub code length (String.length code - length) in
+                to_message (acc ^ String.make 1 char) code
+    in
+
+    to_message "" code
+;;
+
+let message = "
+Ogrlico nosila
+je moja vila
+zato so jo klicali vsi
+Maja z biseri,
+Maja z biseri.
+
+Obraz kot s španske slike,
+oči velike,
+nasmehi pa kot čudeži,
+Maja z biseri,
+Maja z biseri.
+
+Ljudje, ki so jo kdaj poznali,
+vzljubili so jo slej ko prej,
+da vsak je biser so dejali,
+simbol lepote, skrite v njej.
+
+Živeti je začela
+in prekipela,
+da v nič so se razblinjali
+njeni biseri,
+njeni biseri.
+
+Srce je neugnano
+in razigrano,
+ko Maja v sladko noč beži
+skupaj z biseri,
+skupaj z biseri.
+
+In bolj, ko srečo vsem razdaja,
+manj sreče Maja zase ima,
+da vedno krajši niz postaja
+prepozno, kakor vsak spozna.
+
+Zdaj tisoč milj od raja,
+v tančici Maja,
+vprašanj neskončnih se boji:
+“Kje so biseri,
+kje so biseri?”
+
+Ogrlico še eno,
+ponarejeno,
+je v žalosti kupila si,
+Maja z biseri,
+Maja z biseri.
+
+A Maja le ni srečna,
+ne, ne, ni srečna,
+čeprav spet kličejo jo vsi
+“Maja z biseri,
+Maja z biseri”.
+
+A kaj, ko vsi smo skupaj,
+vsi smo kot Maja,
+vsaj enkrat smo v življenju vsi
+“Maja z biseri,
+Maja z biseri…”
+";;
+
+let (huffman, code) as encoded = encode message;;
+
+let message_size = String.length message * 8 in
+let encoded_size = List.fold_left (fun sum -> function | (ch, code) -> sum + 8 + String.length code) 0 huffman + String.length code in
+Format.printf "message size: %d b\nencoded size: %d b\ncompression ratio: %f\n"
+    message_size encoded_size (Int.to_float encoded_size /. Int.to_float message_size);;
+
+assert (decode encoded = message);;
+
+timeit "encode" encode message;;
+timeit "decode" decode encoded;;
