@@ -118,46 +118,41 @@ type node = {
 };;
 
 let huffman freqs =
-    (* sort list of (char, freq) in descending order *)
+    (* sort list of (char, freq) in ascending order *)
     let sort =
         List.sort
         (fun a b ->
             match (a, b) with
-            | ((_, f1), (_, f2)) -> f2 - f1)
+            | ((_, f1), (_, f2)) -> f1 - f2)
     in
     (* transform list of (char, freq) tuples to list of nodes *)
     let rec make_nodes = function
         | [] -> []
         | (ch, fr) :: tl -> { ch = Some ch; fr; lc = None; rc = None } :: make_nodes tl
     in
-    (* get last 2 nodes from the list *)
-    let rec next_nodes list =
-        let rec aux = function
-            | [a; b] -> (a, b)
-            | hd :: tl -> aux tl
-            | _ -> raise (Failure "unreachable: always at least 2 nodes")
-        in
-        aux list
+    (* get first 2 nodes from the list *)
+    let next_nodes = function
+        | a :: b :: tl -> (a, b)
+        | _ -> raise (Failure "unreachable: always at least 2 nodes")
     in
-    (* delete last 2 nodes from the list *)
-    let rec delete = function
-        | [_; _] -> []
-        | hd :: tl -> hd :: delete tl
+    (* delete first 2 nodes from the list *)
+    let delete = function
+        | a :: b :: tl -> tl
         | _ -> raise (Failure "unreachable: always delete 2 nodes")
     in
     (* insert node at the appropriate position *)
     let rec insert node list =
-        let { ch; fr; lc; rc } = node in
+        let { fr } = node in
         match list with
         | [] -> [node]
-        | { fr=f } as hd :: tl -> if fr > f then node :: list else hd :: insert node tl
+        | { fr=f } as hd :: tl -> if fr < f then node :: list else hd :: insert node tl
     in
     (* make node with child nodes a and b and frequency a.fr + b.fr *)
     let make_node a b =
         match (a, b) with
-        | ({ fr=f1 }, { fr=f2 }) -> { ch = None; fr = f1 + f2; lc = Some b; rc = Some a }
+        | ({ fr=f1 }, { fr=f2 }) -> { ch = None; fr = f1 + f2; lc = Some a; rc = Some b }
     in
-    (* build the tree *)
+    (* build tree *)
     let rec build_tree list =
         if List.length list = 1 then List.hd list
         else
@@ -170,8 +165,8 @@ let huffman freqs =
     (* transform tree to list of huffman codes *)
     let to_huffman nodes =
         let rec aux code = function
-            | { ch=Some ch; fr; lc; rc } -> [(ch, code)]
-            | { ch; fr; lc=Some lc; rc=Some rc } -> aux (code ^ "0") lc @ aux (code ^ "1") rc
+            | { ch=Some ch } -> [(ch, code)]
+            | { lc=Some lc; rc=Some rc } -> aux (code ^ "0") lc @ aux (code ^ "1") rc
             | _ -> raise (Failure "unreachable: nodes always follow the pattern above")
         in
         aux "" nodes
