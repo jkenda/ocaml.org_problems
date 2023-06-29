@@ -140,32 +140,24 @@ let huffman freqs =
     in
     (* build tree *)
     let rec build_tree list =
-        (* get first 2 nodes from the list *)
-        let next_nodes = function
-            | a :: b :: _ -> (a, b)
+        (* make node from first two nodes in the list *)
+        let combine = function
+            | a :: b :: tl -> (tl, Node (freq a + freq b, a, b))
             | _ -> raise (Failure "unreachable: always at least 2 nodes")
         in
-        (* delete first 2 nodes from the list *)
-        let delete = function
-            | _ :: _ :: tl -> tl
-            | _ -> raise (Failure "unreachable: always delete 2 nodes")
-        in
         (* insert node at the appropriate position *)
-        let rec insert node = function
+        let rec insert (list, node) =
+            match list with
             | [] -> [node]
-            | hd :: tl as ls -> if freq node < freq hd then node :: ls else hd :: insert node tl
-        in
-        (* make node with child nodes a and b and frequency a.fr + b.fr *)
-        let make_node (a, b) =
-            Node (freq a + freq b, a, b)
+            | hd :: _ as ls when freq node < freq hd -> node :: ls
+            | hd :: tl -> hd :: insert (tl, node)
         in
 
         if List.length list = 1 then List.hd list
         else
-            let new_node = make_node (next_nodes list) in
             list
-                |> delete
-                |> insert new_node
+                |> combine
+                |> insert
                 |> build_tree
     in
     (* transform tree to list of huffman codes *)
