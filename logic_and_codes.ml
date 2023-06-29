@@ -1,3 +1,5 @@
+open Tools;;
+
 (* Truth Tables for Logical Expressions (2 Variables) *)
 (* Intermediate difficulty *)
 (* Let us define a small "language" for boolean expressions containing variables: *)
@@ -142,15 +144,15 @@ let huffman freqs =
     let rec build_tree list =
         (* make node from first two nodes in the list *)
         let combine = function
-            | a :: b :: tl -> (tl, Node (freq a + freq b, a, b))
+            | a :: b :: tl -> Node (freq a + freq b, a, b), tl
             | _ -> raise (Failure "unreachable: always at least 2 nodes")
         in
         (* insert node at the appropriate position *)
-        let rec insert (list, node) =
+        let rec insert (node, list) =
             match list with
             | [] -> [node]
             | hd :: _ as ls when freq node < freq hd -> node :: ls
-            | hd :: tl -> hd :: insert (tl, node)
+            | hd :: tl -> hd :: insert (node, tl)
         in
 
         if List.length list = 1 then List.hd list
@@ -201,56 +203,67 @@ let encode message =
         (fun (_, c1) (_, c2) -> String.length c1 - String.length c2)
     in
     (* buffer for building strings *)
-    let buffer = Buffer.create (String.length message) in
+    let out_buffer = Bitv.create (String.length message * 8) false in
+    let i = ref 0 in
     (* encode mesage with huffman *)
     let to_code huffman =
         let add_code char =
             let rec aux = function
-                | (ch, code) :: _ when ch = char -> Buffer.add_string buffer code
+                | (ch, code) :: _ when ch = char ->
+                        String.iter (fun c -> Bitv.set out_buffer !i (c = '1'); i := !i + 1) code
                 | _ :: tl -> aux tl
                 | [] -> raise (Failure "unreachable: code for char always exists")
             in
             aux huffman
         in
         String.iter add_code message;
-        Buffer.contents buffer
+        (Bitv.sub out_buffer 0 !i |> Bitv.to_bytes), !i
     in
-    let _ = let open Tools in timeit "huffman" huffman (freqs message) in
 
     let huffman = message
-                |> freqs
-                |> huffman
-                |> sort
+                |> time "encode.freqs" freqs
+                |> time "encode.huffman" huffman
+                |> time "encode.sort" sort
     in
-    (huffman, to_code huffman)
+    (huffman, time "encode.to_code" to_code huffman)
 ;;
 
 (* decode huffman encoded message *)
 let decode encoded =
-    let (dict, sequence) = encoded in
-    (* find char that matches the code *)
-    let rec find_char bits = function
-        | (char, code) :: _ when String.starts_with ~prefix:code bits -> Some char
-        | _ :: tl -> find_char bits tl
-        | [] -> None
-    in
+    let dict, (bytes, len) = encoded in
     (* buffer for building strings *)
-    let out_buffer = Buffer.create (String.length sequence) in
-    let bit_buffer = Buffer.create (List.length dict) in
+    let in_buffer  = Bitv.of_bytes bytes in
+    let out_buffer = Buffer.create len in
     (* build string from code *)
-    (* keep filling the bit buffer until it matches a char code, then
+    (* find a code that matches the front of the buffer, then
         - add the corresponding char to the out buffer,
         - clear the bit buffer *)
-    let build_code bit =
-        Buffer.add_char bit_buffer bit;
-        match find_char (Buffer.contents bit_buffer) dict with
-        | Some char ->
-                Buffer.add_char out_buffer char;
-                Buffer.clear bit_buffer
-        | None -> ()
+    let rec code_to_string start =
+        (* check if the in_buffer start with the code *)
+        let rec starts_with code i = 
+            let j = i - start in
+            if j >= String.length code then true
+            else if i >= Bitv.length in_buffer then false
+            else
+                match Bitv.get in_buffer i, code.[j] with
+                | false, '0' | true, '1' -> starts_with code (i + 1)
+                | _ -> false
+        in
+        (* find char that matches the code *)
+        let rec find_char dict start =
+            match dict with
+            | (char, code) :: _ when starts_with code start -> char, String.length code
+            | _ :: tl -> find_char tl start
+            | _ -> raise (Failure "unreachable: there is always a match")
+        in
+
+        if start < len then
+            let char, len = find_char dict start in 
+            Buffer.add_char out_buffer char;
+            code_to_string (start + len)
     in
 
-    String.iter build_code sequence;
+    code_to_string 0;
     Buffer.contents out_buffer
 ;;
 
@@ -282,16 +295,16 @@ Dui faucibus in ornare quam viverra orci sagittis eu volutpat. Volutpat lacus la
 Commodo odio aenean sed adipiscing diam donec adipiscing tristique. A arcu cursus vitae congue mauris rhoncus aenean vel elit. Nullam non nisi est sit amet facilisis. Egestas tellus rutrum tellus pellentesque eu tincidunt tortor. Aliquet nibh praesent tristique magna sit amet. Lobortis elementum nibh tellus molestie nunc non blandit. Porttitor eget dolor morbi non arcu risus quis varius. Id diam maecenas ultricies mi eget mauris pharetra et. Arcu cursus vitae congue mauris rhoncus. Convallis aenean et tortor at risus viverra adipiscing at in. Ac tincidunt vitae semper quis lectus nulla at volutpat diam. Convallis convallis tellus id interdum velit laoreet id.
 ";;
 
-let (huffman, code) as encoded = encode lorem_ipsum;;
+let huffman, (bytes, _) as encoded = time "encode\n" encode lorem_ipsum in
+let decoded = time "decode\n" decode encoded in
+assert (decoded = lorem_ipsum);
 
 let message_size = String.length lorem_ipsum * 8 in
-let encoded_size = List.fold_left (fun sum (_, code) -> sum + 8 + String.length code) 0 huffman + String.length code in
-Format.printf "message size: %d b\nencoded size: %d b\ncompression ratio: %f\n"
-    message_size encoded_size (Int.to_float encoded_size /. Int.to_float message_size);;
+let encoded_size = List.fold_left (fun sum (_, code) -> sum + 8 + String.length code * 8) 0 huffman + Bytes.length bytes * 8 in
 
-assert (decode encoded = lorem_ipsum);;
-
-let open Tools in
-timeit "encode" encode lorem_ipsum;
-timeit "decode" decode encoded;;
+let open Format in
+printf "message size: %d b\n" message_size;
+printf "encoded size: %d b\n" encoded_size;
+printf "compression ratio: %f\n" (Int.to_float encoded_size /. Int.to_float message_size) 
+;;
 

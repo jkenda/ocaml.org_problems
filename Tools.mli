@@ -1,1 +1,1 @@
-val timeit : string -> ('a -> 'b) -> 'a -> unit
+val time : string -> ('a -> 'b) -> 'a -> 'b
