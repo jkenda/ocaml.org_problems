@@ -1,3 +1,0 @@
-(executable
-  (name logic_and_codes)
-  (libraries bitv))
