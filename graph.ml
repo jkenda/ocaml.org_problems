@@ -5,45 +5,49 @@ type 'a node =
 let get_el (Node (el, _)) = el;;
 
 let find_dfs graph goal =
-    let rec search_node visited (Node (self, children)) =
+    let rec search_node path sum (Node (self, children)) =
         let rec search_list = function
             | [] -> None
-            | (child, _) :: tl ->
-                    match search_node (self :: visited) child with
+            | (child, dist) :: tl ->
+                    match search_node (self :: path) (sum + dist) child with
                     | None -> search_list tl
                     | r -> r
         in
         (* goal reached *)
-        if self = goal then Some [self]
+        if self = goal then Some (self :: path, sum)
         (* prevent cycling *)
-        else if List.mem self visited then None
+        else if List.mem self path then None
         (* search children *)
         else
             search_list children
-                    |> Option.map (fun r -> self :: r)
     in
-    search_node [] graph
+    search_node [] 0 graph
+        |> Option.map (fun (path, distance) -> (List.rev path, distance))
 ;;
 assert (find_dfs (Node ('a', [Node ('b', []), 1; Node ('c', []), 2])) 'h' = None);;
-assert (find_dfs (Node ('a', [Node ('b', []), 1; Node ('c', []), 2])) 'c' = Some ['a'; 'c']);;
-assert (find_dfs (Node ('a', [Node ('b', []), 1; Node ('c', [Node ('h', []), 3]), 2])) 'h' = Some ['a'; 'c'; 'h']);;
+assert (find_dfs (Node ('a', [Node ('b', []), 1; Node ('c', []), 2])) 'c' = Some (['a'; 'c'], 2));;
+assert (find_dfs (Node ('a', [Node ('b', []), 1; Node ('c', [Node ('h', []), 3]), 2])) 'h' = Some (['a'; 'c'; 'h'], 5));;
 
 let find_bfs graph goal =
-    let create_paths path =
-        List.map (fun (Node (child, _), _) -> child :: path)
+    let create_paths path sum children =
+        children
+        |> List.map (fun (Node (child, _), dist) -> child :: path, sum + dist)
+        |> List.split
     in
-    let rec aux paths queue =
-        match paths, queue with
-        | [], [] -> None
-        | path :: paths, (Node (self, children), _) :: queue ->
-                if self = goal then Some (List.rev path)
-                else aux (paths @ create_paths path children) (queue @ children)
+    let rec aux paths sums queue =
+        match paths, sums, queue with
+        | [], [], [] -> None
+        | path :: paths, sum :: sums, (Node (self, children), dist) :: queue ->
+                if self = goal then Some (List.rev path, sum)
+                else
+                    let (new_paths, dists) = create_paths path sum children in
+                    aux (paths @ new_paths) (sums @ dists) (queue @ children)
         | _ -> raise (Failure "unreachable")
     in
-    aux [[get_el graph]] [graph, 0]
+    aux [[get_el graph]] [0] [graph, 0]
 ;;
-assert (find_bfs (Node ('a', [Node ('b', []), 1; Node ('c', []), 2])) 'c' = Some ['a'; 'c']);;
-assert (find_bfs (Node ('a', [Node ('b', []), 1; Node ('c', [Node ('h', []), 3]), 2])) 'h' = Some ['a'; 'c'; 'h']);;
+assert (find_bfs (Node ('a', [Node ('b', []), 1; Node ('c', []), 2])) 'c' = Some (['a'; 'c'], 2));;
+assert (find_bfs (Node ('a', [Node ('b', []), 1; Node ('c', [Node ('h', []), 3]), 2])) 'h' = Some (['a'; 'c'; 'h'], 5));;
 
 let rec s = Node ('s', [a, 3; b, 2; c, 2])
 and a = Node ('a', [d, 3; e, 5])
@@ -63,6 +67,6 @@ and n = Node ('n', [o, 2])
 and o = Node ('o', [])
 and p = Node ('p', []);;
 
-assert (find_bfs s 'o' = Some ['s'; 'c'; 'h'; 'o']);;
-assert (find_dfs s 'l' = Some ['s'; 'a'; 'd'; 'j'; 'k'; 'e'; 'l']);;
+assert (find_bfs s 'o' = Some (['s'; 'c'; 'h'; 'o'], 9));;
+assert (find_dfs s 'l' = Some (['s'; 'a'; 'd'; 'j'; 'k'; 'e'; 'l'], 10));;
 
