@@ -162,7 +162,7 @@ assert (find_greedy s ['l'; 'o'] correct_h = None);;
 (* A* *)
 let find_a' graph goals heuristic =
     let add_to_queue path sum children queue =
-        let insert ((Node (tag, _), dist) as node) list =
+        let insert list ((Node (tag, _), dist) as node) =
             let dist = sum + dist in
             let node = dist, node, tag :: path in
             let rec aux = function
@@ -171,7 +171,7 @@ let find_a' graph goals heuristic =
                 | hd :: tl -> hd :: aux tl
             in aux list
         in
-        List.fold_right insert children queue
+        List.fold_left insert queue children
     in
     let rec aux = function
         (* queue is exhausted, none of the goals found *)
@@ -187,4 +187,59 @@ let find_a' graph goals heuristic =
 assert (find_a' s ['l'; 'o'] incorrect_h = Some (['s'; 'b'; 'f'; 'n'; 'o'], 8));;
 assert (find_a' s ['l'; 'o'] correct_h = Some (['s'; 'b'; 'e'; 'l'], 7));;
 assert (find_a' s ['l'; 'o'] perfect_h = find_a' s ['l'; 'o'] correct_h);;
+
+type ('a, 'b) either =
+    | Left of 'a 
+    | Right of 'b
+;;
+
+(* IDA* *)
+let find_ida' graph goals heuristic =
+    let find_a'limit limit =
+        let next_limit = ref None in
+        let add_to_queue path sum children queue =
+            let insert ((Node (tag, _), dist) as node) list =
+                let dist = sum + dist in
+                let node = dist, node, tag :: path in
+                let rec aux = function
+                    | [] -> [node]
+                    | (d, (Node (t, _), _), _) :: _ as ls when dist + heuristic tag <= d + heuristic t ->
+                            if d > limit then (
+                                (match !next_limit with
+                                 | None -> next_limit := Some d
+                                 | Some nl -> if d < nl then next_limit := Some d);
+                                ls)
+                            else node :: ls
+                    | hd :: tl -> hd :: aux tl
+                in aux list
+            in
+            List.fold_right insert children queue
+        in
+        let rec aux = function
+            (* queue is exhausted, none of the goals found *)
+            | [] -> Right !next_limit
+            (* there are still elements in the queue *)
+            | (dist, (Node (tag, children), _), path) :: queue ->
+                    (* goal found *)
+                    if List.mem tag goals then Left (List.rev path, dist)
+                    else aux (add_to_queue path dist children queue)
+        in
+        aux [(0, (graph, 0), [get_el graph])]
+    in
+    let rec aux limit =
+        match find_a'limit limit with
+        | Left l -> Some l
+        | Right (Some limit) -> aux limit
+        | Right None -> None
+    in
+    aux 0
+;;
+assert (find_ida' s ['l'; 'o'] incorrect_h = Some (['s'; 'b'; 'f'; 'n'; 'o'], 8));;
+assert (find_ida' s ['l'; 'o'] correct_h   = Some (['s'; 'b'; 'e'; 'l'], 7));;
+assert (find_ida' s ['l'; 'o'] perfect_h   = find_ida' s ['l'; 'o'] correct_h);;
+
+assert (find_ida' s ['l'; 'o'] incorrect_h = find_a' s ['l'; 'o'] incorrect_h);;
+assert (find_ida' s ['l'; 'o'] correct_h   = find_a' s ['l'; 'o'] correct_h);;
+assert (find_ida' s ['l'; 'o'] perfect_h   = find_a' s ['l'; 'o'] perfect_h);;
+
 
