@@ -32,25 +32,19 @@ assert (find_dfs (Node ('a', [Node ('b', []), 1; Node ('c', [Node ('h', []), 3])
 
 (* breadth first search *)
 let find_bfs graph goals =
-    let create_paths_dists path sum children =
-        children
-        |> List.map (fun (Node (child, _), dist) -> child :: path, sum + dist)
-        |> List.split
+    let add_to_queue path sum children queue =
+        queue @ List.map (fun ((Node (tag, _), dist) as child) -> tag :: path, sum + dist, child) children
     in
-    let rec aux paths sums queue =
-        match paths, sums, queue with
+    let rec aux = function
         (* queue is exhausted, none of the goals found *)
-        | [], [], [] -> None
+        | [] -> None
         (* there are still elements in the queue *)
-        | path :: paths, dist :: dists, (Node (self, children), _) :: queue ->
+        | (path, dist, (Node (self, children), _)) :: queue ->
                 (* goal found *)
                 if List.mem self goals then Some (List.rev path, dist)
-                else
-                    let (new_paths, new_dists) = create_paths_dists path dist children in
-                    aux (paths @ new_paths) (dists @ new_dists) (queue @ children)
-        | _ -> raise (Unreachable "the 3 lists are always of the same length")
+                else aux (add_to_queue path dist children queue)
     in
-    aux [[get_el graph]] [0] [graph, 0]
+    aux [([get_el graph], 0, (graph, 0))]
 ;;
 assert (find_bfs (Node ('a', [Node ('b', []), 1; Node ('c', []), 2])) ['c'] = Some (['a'; 'c'], 2));;
 assert (find_bfs (Node ('a', [Node ('b', []), 1; Node ('c', [Node ('h', []), 3]), 2])) ['h'] = Some (['a'; 'c'; 'h'], 5));;
@@ -164,4 +158,33 @@ let find_greedy graph goals heuristic =
 ;;
 assert (find_greedy s ['l'; 'o'] perfect_h = Some (['s'; 'b'; 'e'; 'l'], 7));;
 assert (find_greedy s ['l'; 'o'] correct_h = None);;
+
+(* A* *)
+let find_a' graph goals heuristic =
+    let add_to_queue path sum children queue =
+        let insert ((Node (tag, _), dist) as node) list =
+            let dist = sum + dist in
+            let node = dist, node, tag :: path in
+            let rec aux = function
+                | [] -> [node]
+                | (d, (Node (t, _), _), _) :: _ as ls when dist + heuristic tag <= d + heuristic t -> node :: ls
+                | hd :: tl -> hd :: aux tl
+            in aux list
+        in
+        List.fold_right insert children queue
+    in
+    let rec aux = function
+        (* queue is exhausted, none of the goals found *)
+        | [] -> None
+        (* there are still elements in the queue *)
+        | (dist, (Node (tag, children), _), path) :: queue ->
+                (* goal found *)
+                if List.mem tag goals then Some (List.rev path, dist)
+                else aux (add_to_queue path dist children queue)
+    in
+    aux [(0, (graph, 0), [get_el graph])]
+;;
+assert (find_a' s ['l'; 'o'] incorrect_h = Some (['s'; 'b'; 'f'; 'n'; 'o'], 8));;
+assert (find_a' s ['l'; 'o'] correct_h = Some (['s'; 'b'; 'e'; 'l'], 7));;
+assert (find_a' s ['l'; 'o'] perfect_h = find_a' s ['l'; 'o'] correct_h);;
 
