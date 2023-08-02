@@ -6,6 +6,7 @@ let get_el (Node (el, _)) = el;;
 
 exception Unreachable of string;;
 
+(* depth first search *)
 let find_dfs graph goals =
     let rec search_node path sum (Node (self, children)) =
         let rec search_list = function
@@ -20,8 +21,7 @@ let find_dfs graph goals =
         (* prevent cycling *)
         else if List.mem self path then None
         (* search children *)
-        else
-            search_list children
+        else search_list children
     in
     search_node [] 0 graph
         |> Option.map (fun (path, distance) -> (List.rev path, distance))
@@ -30,6 +30,7 @@ assert (find_dfs (Node ('a', [Node ('b', []), 1; Node ('c', []), 2])) ['h'] = No
 assert (find_dfs (Node ('a', [Node ('b', []), 1; Node ('c', []), 2])) ['c'] = Some (['a'; 'c'], 2));;
 assert (find_dfs (Node ('a', [Node ('b', []), 1; Node ('c', [Node ('h', []), 3]), 2])) ['h'] = Some (['a'; 'c'; 'h'], 5));;
 
+(* breadth first search *)
 let find_bfs graph goals =
     let create_paths_dists path sum children =
         children
@@ -64,6 +65,7 @@ let container_map f = function
     | Found x -> Found (f x)
 ;;
 
+(* iterative deepeining depth first search *)
 let find_ids graph goals =
     let find_dfs_limited limit =
         let rec search_node path sum (Node (self, children)) limit =
@@ -121,7 +123,45 @@ and n = Node ('n', [o, 2])
 and o = Node ('o', [])
 and p = Node ('p', []);;
 
+let incorrect_h = function | 's' -> 4 | 'a' -> 5 | 'b' -> 6 | 'c' -> 5 | 'd' -> 1 | 'e' -> 4 | 'f' -> 3 | 'g' -> 6 | 'h' -> 5 
+                           | 'i' -> 1 | 'j' -> 2 | 'k' -> 1 | 'l' -> 2 | 'm' -> 6 | 'n' -> 2 | 'o' -> 0 | 'p' -> 1
+                           | _ -> raise (Failure "invalid node reached");;
+let correct_h = function | 's' -> 4 | 'a' -> 5 | 'b' -> 5 | 'c' -> 5 | 'd' -> 1 | 'e' -> 1 | 'f' -> 3 | 'g' -> 6 | 'h' -> 2 
+                         | 'i' -> 1 | 'j' -> 2 | 'k' -> 1 | 'l' -> 0 | 'm' -> 6 | 'n' -> 2 | 'o' -> 0 | 'p' -> 1
+                         | _ -> raise (Failure "invalid node reached");;
+let perfect_h = function | 's' -> 7 | 'a' -> 6 | 'b' -> 5 | 'c' -> 7 | 'd' -> 4 | 'e' -> 1 | 'f' -> 3 | 'g' -> Int.max_int
+                         | 'h' -> 2 | 'i' -> Int.max_int  | 'j' -> 3 | 'k' -> 2 | 'l' -> 0 | 'm' -> Int.max_int
+                         | 'n' -> 2 | 'o' -> 0 | 'p' -> Int.max_int
+                         | _ -> raise (Failure "invalid node reached");;
+
 assert (find_bfs s ['l'; 'o'] = Some (['s'; 'a'; 'e'; 'l'], 9));;
 assert (find_dfs s ['l'; 'o'] = Some (['s'; 'a'; 'd'; 'j'; 'k'; 'e'; 'l'], 10));;
 assert (find_ids s ['l'; 'o'] = find_bfs s ['l'; 'o'])
+
+
+(* greedy best-first search *)
+let find_greedy graph goals heuristic =
+    let rec search_node path sum (Node (self, children)) =
+        let search_min_child children =
+            let rec min ((min, _, _) as prev) (Node (tag, _) as hd, dist) =
+                let h = heuristic tag in
+                if h < min then (h, Some hd, dist) else prev
+            in
+            let (_, child, dist) = List.fold_left min (Int.max_int, None, 0) children in
+            match child with
+            | Some (Node (tag, _) as child) -> search_node (self :: path) (sum + dist) child
+            | None -> None
+        in
+        (* goal reached *)
+        if List.mem self goals then Some (self :: path, sum)
+        (* prevent cycling *)
+        else if List.mem self path then None
+        (* search children *)
+        else search_min_child children
+    in
+    search_node [] 0 graph
+        |> Option.map (fun (path, distance) -> (List.rev path, distance))
+;;
+assert (find_greedy s ['l'; 'o'] perfect_h = Some (['s'; 'b'; 'e'; 'l'], 7));;
+assert (find_greedy s ['l'; 'o'] correct_h = None);;
 
