@@ -2,9 +2,8 @@ type distance = int;;
 type 'a node =
     Node of 'a * ('a node * distance) list
 ;;
-let get_el (Node (el, _)) = el;;
-
-exception Unreachable of string;;
+let get_val (Node (el, _)) = el;;
+let get_neigh (Node (_, neighbours)) = neighbours;;
 
 (* depth first search *)
 let find_dfs graph goals =
@@ -44,7 +43,7 @@ let find_bfs graph goals =
                 if List.mem self goals then Some (List.rev path, dist)
                 else aux (add_to_queue path dist children queue)
     in
-    aux [([get_el graph], 0, (graph, 0))]
+    aux [([get_val graph], 0, (graph, 0))]
 ;;
 assert (find_bfs (Node ('a', [Node ('b', []), 1; Node ('c', []), 2])) ['c'] = Some (['a'; 'c'], 2));;
 assert (find_bfs (Node ('a', [Node ('b', []), 1; Node ('c', [Node ('h', []), 3]), 2])) ['h'] = Some (['a'; 'c'; 'h'], 5));;
@@ -119,6 +118,8 @@ and p = Node ('p', []);;
 
 let goals = ['l'; 'o'];;
 
+let get_dist (Node _, dist) = dist;;
+
 let correct_h = function 's' -> 4 | 'a' -> 5 | 'b' -> 5 | 'c' -> 5 | 'd' -> 1 | 'e' -> 1 | 'f' -> 3 | 'g' -> 6 | 'h' -> 2
                        | 'i' -> 1 | 'j' -> 2 | 'k' -> 1 | 'l' -> 0 | 'm' -> 6 | 'n' -> 2 | 'o' -> 0 | 'p' -> 1
                        | _ -> raise (Failure "invalid node reached");;
@@ -163,34 +164,34 @@ assert (find_greedy graph goals perfect_h = Some (['s'; 'b'; 'e'; 'l'], 7));;
 assert (find_greedy graph ['l'; 'o'] correct_h = None);;
 
 (* A* *)
-let find_a' graph goals heur =
-    let add_to_queue queue children path sum =
-        let insert list ((Node (tag, _), dist) as node) =
-            let (dist, _, _) as node = sum + dist, node, tag :: path in
+let find_a' graph goals neigh_f heur_f =
+    let add_to_queue queue path sum neighbours =
+        let insert list ((n, dist) as node) =
+            let (dist, _, _) as node = sum + dist, node, (get_val n) :: path in
             let rec insert' = function
                 | [] -> [node]
                 | (d, (Node (t, _), _), _) as hd :: tl as ls ->
-                        if dist + heur tag <= d + heur t then node :: ls
+                        if dist + heur_f (get_val n) <= d + heur_f t then node :: ls
                         else hd :: insert' tl
             in insert' list
         in
-        List.fold_left insert queue children
+        List.fold_left insert queue neighbours
     in
     let rec aux = function
         (* queue is exhausted, none of the goals found *)
         | [] -> None
         (* there are still elements in the queue *)
-        | (dist, (Node (tag, children), _), path) :: queue ->
+        | (dist, (node, sum), path) :: queue ->
                 (* goal found *)
-                if List.mem tag goals then Some (List.rev path, dist)
-                else aux (add_to_queue queue children path dist)
+                if List.mem (get_val node) goals then Some (List.rev path, dist)
+                else aux (add_to_queue queue path dist (neigh_f node))
     in
-    aux [(0, (graph, 0), [get_el graph])]
+    aux [(0, (graph, 0), [get_val graph])]
 ;;
-assert (find_a' graph goals correct_h = Some (['s'; 'b'; 'e'; 'l'], 7));;
-assert (find_a' graph goals perfect_h = find_a' graph goals correct_h);;
+assert (find_a' graph goals get_neigh correct_h = Some (['s'; 'b'; 'e'; 'l'], 7));;
+assert (find_a' graph goals get_neigh perfect_h = find_a' graph goals get_neigh correct_h);;
 
-assert (find_a' graph goals incorrect_h = Some (['s'; 'b'; 'f'; 'n'; 'o'], 8));;
+assert (find_a' graph goals get_neigh incorrect_h = Some (['s'; 'b'; 'f'; 'n'; 'o'], 8));;
 
 type ('a, 'b) result =
     | Result of 'a
@@ -231,7 +232,7 @@ let find_ida' graph goals heuristic =
                     if List.mem tag goals then Result (List.rev path, dist)
                     else aux (add_to_queue path dist children queue)
         in
-        aux [(0, (graph, 0), [get_el graph])]
+        aux [(0, (graph, 0), [get_val graph])]
     in
     let rec find' limit =
         match find_a'limited limit with
@@ -239,7 +240,7 @@ let find_ida' graph goals heuristic =
         | Limit None -> None
         | Limit (Some limit) -> find' limit
     in
-    get_el graph
+    get_val graph
         |> heuristic
         |> find'
 ;;
@@ -247,8 +248,8 @@ assert (find_ida' graph goals incorrect_h = Some (['s'; 'b'; 'f'; 'n'; 'o'], 8))
 assert (find_ida' graph goals correct_h   = Some (['s'; 'b'; 'e'; 'l'], 7));;
 assert (find_ida' graph goals perfect_h   = find_ida' graph goals correct_h);;
 
-assert (find_ida' graph goals incorrect_h = find_a' graph goals incorrect_h);;
-assert (find_ida' graph goals correct_h   = find_a' graph goals correct_h);;
-assert (find_ida' graph goals perfect_h   = find_a' graph goals perfect_h);;
+assert (find_ida' graph goals incorrect_h = find_a' graph goals get_neigh incorrect_h);;
+assert (find_ida' graph goals correct_h   = find_a' graph goals get_neigh correct_h);;
+assert (find_ida' graph goals perfect_h   = find_a' graph goals get_neigh perfect_h);;
 
 
