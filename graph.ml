@@ -195,21 +195,24 @@ type ('a, 'b) either =
 
 (* IDA* *)
 let find_ida' graph goals heuristic =
-    let find_a'limit limit =
+    let find_a'limited limit =
+        (* smallest of the distances that go over the limit *)
         let next_limit = ref None in
+        let replace_next_limit limit =
+            match !next_limit with
+            | None -> next_limit := Some limit
+            | Some nl -> if limit < nl then next_limit := Some limit
+        in
+        (* add children's properties to queue *)
         let add_to_queue path sum children queue =
             let insert ((Node (tag, _), dist) as node) list =
-                let dist = sum + dist in
-                let node = dist, node, tag :: path in
+                let (dist, _, _) as node = sum + dist, node, tag :: path in
                 let rec aux = function
-                    | [] -> [node]
+                    | [] -> if dist <= limit then [node]
+                            else (replace_next_limit dist; [])
                     | (d, (Node (t, _), _), _) :: _ as ls when dist + heuristic tag <= d + heuristic t ->
-                            if d > limit then (
-                                (match !next_limit with
-                                 | None -> next_limit := Some d
-                                 | Some nl -> if d < nl then next_limit := Some d);
-                                ls)
-                            else node :: ls
+                            if dist <= limit then node :: ls
+                            else (replace_next_limit dist; ls)
                     | hd :: tl -> hd :: aux tl
                 in aux list
             in
@@ -226,13 +229,13 @@ let find_ida' graph goals heuristic =
         in
         aux [(0, (graph, 0), [get_el graph])]
     in
-    let rec aux limit =
-        match find_a'limit limit with
-        | Left l -> Some l
-        | Right (Some limit) -> aux limit
+    let rec find' limit =
+        match find_a'limited limit with
+        | Left result -> Some result
         | Right None -> None
+        | Right (Some new_limit) -> find' new_limit
     in
-    aux 0
+    find' 0
 ;;
 assert (find_ida' s ['l'; 'o'] incorrect_h = Some (['s'; 'b'; 'f'; 'n'; 'o'], 8));;
 assert (find_ida' s ['l'; 'o'] correct_h   = Some (['s'; 'b'; 'e'; 'l'], 7));;
