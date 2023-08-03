@@ -198,7 +198,7 @@ let find_ida' graph goals heuristic =
     let find_a'limited limit =
         (* smallest of the distances that go over the limit *)
         let next_limit = ref None in
-        let replace_next_limit_with limit =
+        let next_limit_is limit =
             match !next_limit with
             | None -> next_limit := Some limit
             | Some nl -> if limit < nl then next_limit := Some limit
@@ -213,18 +213,10 @@ let find_ida' graph goals heuristic =
                     | (d, (Node (t, _), _), _) :: _ as ls when dist_plus_h <= d + heuristic t -> node :: ls
                     | hd :: tl -> hd :: insert' tl
                 in
-                if dist_plus_h > limit then (replace_next_limit_with dist_plus_h; list)
+                if dist_plus_h > limit then (next_limit_is dist_plus_h; list)
                 else insert' list
             in
             List.fold_right insert children queue
-        in
-        let rec string_of_children = function
-            | [] -> ""
-            | (Node (tag, _), _) :: tl -> Format.sprintf "%c, " tag ^ string_of_children tl
-        in
-        let rec string_of_queue = function
-            | [] -> ""
-            | (dist, (Node (tag, _), _), _) :: tl -> Format.sprintf "%c(%d, %d), " tag dist (heuristic tag) ^ string_of_queue tl
         in
         let rec aux = function
             (* queue is exhausted, none of the goals found *)
@@ -233,11 +225,7 @@ let find_ida' graph goals heuristic =
             | (dist, (Node (tag, children), _), path) :: queue ->
                     (* goal found *)
                     if List.mem tag goals then Left (List.rev path, dist)
-                    else
-                        let queue = add_to_queue path dist children queue in
-                        Format.printf "%d: %c; %s vrsta: %s\n" limit tag
-                            (string_of_children children) (string_of_queue queue);
-                        aux queue
+                    else aux (add_to_queue path dist children queue)
         in
         aux [(0, (graph, 0), [get_el graph])]
     in
@@ -247,7 +235,9 @@ let find_ida' graph goals heuristic =
         | Right None -> None
         | Right (Some new_limit) -> find' new_limit
     in
-    find' 0
+    get_el graph
+        |> heuristic
+        |> find'
 ;;
 assert (find_ida' s ['l'; 'o'] incorrect_h = Some (['s'; 'b'; 'f'; 'n'; 'o'], 8));;
 assert (find_ida' s ['l'; 'o'] correct_h   = Some (['s'; 'b'; 'e'; 'l'], 7));;
