@@ -255,7 +255,7 @@ let find_ida' { origin; goals; neigh_f; heur_f } =
     let find_a'limited limit =
         (* smallest of the distances that go over the limit *)
         let next_limit = ref None in
-        let next_limit_is limit =
+        let set_next_limit limit =
             match !next_limit with
             | None -> next_limit := Some limit
             | Some nl -> if limit < nl then next_limit := Some limit
@@ -263,10 +263,12 @@ let find_ida' { origin; goals; neigh_f; heur_f } =
         (* add children's properties to queue *)
         let add_to_queue queue path sum children =
             let transform ((new_node, dist) as node) =
-                let (dist, (self, _), path) as node = sum + dist, node, new_node :: path in
-                let dist_plus_h = dist + heur_f new_node in
-                if dist_plus_h <= limit then Some node
-                else (next_limit_is dist_plus_h; None)
+                let (dist, _, _) as node = sum + dist, node, new_node :: path in
+                let dist = dist + heur_f new_node in
+                if dist <= limit then
+                    Some node
+                else
+                    (set_next_limit dist; None)
             in
             List.filter_map transform children @ queue
         in
