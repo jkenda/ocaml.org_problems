@@ -1,2 +1,3 @@
-*.cm
-_build
+*.cm*
+*.o
+bin/

@@ -188,30 +188,57 @@ let find_greedy { origin; goals; neigh_f; heur_f } =
 assert (find_greedy { graph with heur_f = perfect_h } = Some (['s'; 'b'; 'e'; 'l'], 7));;
 assert (find_greedy { graph with heur_f = correct_h } = None);;
 
+module PrioQueue =
+    struct
+        type priority = int
+        type 'a queue = Empty | Node of priority * 'a * 'a queue * 'a queue
+        let empty = Empty
+        let leaf prio elt = Node (prio, elt, Empty, Empty)
+        let rec insert queue prio elt =
+            match queue with
+            | Empty -> Node(prio, elt, Empty, Empty)
+            | Node(p, e, left, right) ->
+                    if prio <= p
+                    then Node(prio, elt, insert right p e, left)
+                    else Node(p, e, insert right prio elt, left)
+        exception Queue_is_empty
+        let rec remove_top = function
+            | Empty -> raise Queue_is_empty
+            | Node(prio, elt, left, Empty) -> left
+            | Node(prio, elt, Empty, right) -> right
+            | Node(prio, elt,
+                (Node(lprio, lelt, _, _) as left),
+                (Node(rprio, relt, _, _) as right)) ->
+                    if lprio <= rprio then
+                        Node(lprio, lelt, remove_top left, right)
+                    else
+                        Node(rprio, relt, left, remove_top right)
+        let extract = function
+            | Empty -> raise Queue_is_empty
+            | Node(prio, elt, _, _) as queue -> (prio, elt, remove_top queue)
+    end;;
+
 (* A* *)
 let find_a' { origin; goals; neigh_f; heur_f } =
+    let open PrioQueue in
     let add_to_queue queue path sum neighbours =
-        let insert list ((new_n, dist) as node) =
+        let insert queue ((new_n, dist) as node) =
             let (dist, _, _) as node = sum + dist, node, new_n :: path in
-            let rec insert' = function
-                | [] -> [node]
-                | (d, (n, _), _) as hd :: tl as ls ->
-                        if dist + heur_f new_n <= d + heur_f n then node :: ls
-                        else hd :: insert' tl
-            in insert' list
+            insert queue (dist + heur_f new_n) node
         in
         List.fold_left insert queue neighbours
     in
     let rec aux = function
         (* queue is exhausted, none of the goals found *)
-        | [] -> None
+        | Empty -> None
         (* there are still elements in the queue *)
-        | (dist, (node, sum), path) :: queue ->
+        | queue ->
+                let (_, (dist, (node, _), path), queue) = extract queue in
                 (* goal found *)
                 if List.mem node goals then Some (List.rev path, dist)
                 else aux (add_to_queue queue path dist (neigh_f node))
     in
-    aux [(0, (origin, 0), [origin])]
+    aux (leaf 0 (0, (origin, 0), [origin]))
 ;;
 assert (find_a' { graph with heur_f = correct_h } = Some (['s'; 'b'; 'e'; 'l'], 7));;
 assert (find_a' { graph with heur_f = perfect_h } = find_a' { graph with heur_f = correct_h });;
@@ -236,15 +263,17 @@ let find_ida' { origin; goals; neigh_f; heur_f } =
         (* add children's properties to queue *)
         let add_to_queue queue path sum children =
             let insert ((new_node, dist) as node) list =
-                let (dist, _, _) as node = sum + dist, node, new_node :: path in
-                let dist_plus_h = dist + heur_f new_node in
-                let rec insert' = function
-                    | [] -> [node]
-                    | (d, (n, _), _) :: _ as ls when dist_plus_h <= d + heur_f n -> node :: ls
-                    | hd :: tl -> hd :: insert' tl
-                in
-                if dist_plus_h > limit then (next_limit_is dist_plus_h; list)
-                else insert' list
+                if List.mem new_node path then list
+                else
+                    let (dist, _, _) as node = sum + dist, node, new_node :: path in
+                    let dist_plus_h = dist + heur_f new_node in
+                    let rec insert' = function
+                        | [] -> [node]
+                        | (d, (n, _), _) :: _ as ls when dist_plus_h <= d + heur_f n -> node :: ls
+                        | hd :: tl -> hd :: insert' tl
+                    in
+                    if dist_plus_h > limit then (next_limit_is dist_plus_h; list)
+                    else insert' list
             in
             List.fold_right insert children queue
         in
