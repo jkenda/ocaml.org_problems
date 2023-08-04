@@ -1,33 +1,43 @@
 exception Illegal;;
+exception Unreachable of string;;
+
+let fold_lefti f x a =
+    let open Array in
+    let r = ref x in
+    for i = 0 to length a - 1 do
+        r := f !r i (unsafe_get a i)
+    done;
+    !r
+;;
 
 type dist = int;;
 type 'a graph = {
     origin: 'a;
     goals: 'a list;
-    neigh_f: 'a -> ('a * dist) list;
+    next_f: 'a -> ('a * dist) list;
     heur_f: 'a -> dist
 };;
 
 let graph1 = {
     origin = 'a'; goals = ['h'];
-    neigh_f = (function 'a' -> ['b', 1; 'c', 2] | 'b' | 'c' -> [] | _ -> raise Illegal);
+    next_f = (function 'a' -> ['b', 1; 'c', 2] | 'b' | 'c' -> [] | _ -> raise Illegal);
     heur_f = (function _ -> 0)
 };;
 
 let graph2 = {
     origin = 'a'; goals = ['c'];
-    neigh_f = (function 'a' -> ['b', 1; 'c', 2] | 'b' | 'c' -> [] | _ -> raise Illegal);
+    next_f = (function 'a' -> ['b', 1; 'c', 2] | 'b' | 'c' -> [] | _ -> raise Illegal);
     heur_f = (function _ -> 0)
 };;
 
 let graph3 = {
     origin = 'a'; goals = ['h'];
-    neigh_f = (function 'a' -> ['b', 1; 'c', 2] | 'b' -> [] | 'c' -> ['h', 3] | _ -> raise Illegal);
+    next_f = (function 'a' -> ['b', 1; 'c', 2] | 'b' -> [] | 'c' -> ['h', 3] | _ -> raise Illegal);
     heur_f = (function _ -> 0)
 }
 
 (* depth first search *)
-let find_dfs { origin; goals; neigh_f; _ } =
+let find_dfs { origin; goals; next_f; _ } =
     let rec search_node path sum self =
         let rec search_list = function
             | [] -> None
@@ -41,7 +51,7 @@ let find_dfs { origin; goals; neigh_f; _ } =
         (* prevent cycling *)
         else if List.mem self path then None
         (* search children *)
-        else search_list (neigh_f self)
+        else search_list (next_f self)
     in
     search_node [] 0 origin
         |> Option.map (fun (path, distance) -> (List.rev path, distance))
@@ -51,7 +61,7 @@ assert (find_dfs graph2 = Some (['a'; 'c'], 2));;
 assert (find_dfs graph3 = Some (['a'; 'c'; 'h'], 5));;
 
 (* breadth first search *)
-let find_bfs { origin; goals; neigh_f; _ } =
+let find_bfs { origin; goals; next_f; _ } =
     let add_to_queue queue path sum children =
         queue @ List.map (fun ((node, dist) as child) -> node :: path, sum + dist, child) children
     in
@@ -62,7 +72,7 @@ let find_bfs { origin; goals; neigh_f; _ } =
         | (path, dist, (self, _)) :: queue ->
                 (* goal found *)
                 if List.mem self goals then Some (List.rev path, dist)
-                else aux (add_to_queue queue path dist (neigh_f self))
+                else aux (add_to_queue queue path dist (next_f self))
     in
     aux [([origin], 0, (origin, 0))]
 ;;
@@ -81,7 +91,7 @@ let container_map f = function
 ;;
 
 (* iterative deepeining depth first search *)
-let find_ids { origin; goals; neigh_f; _ } =
+let find_ids { origin; goals; next_f; _ } =
     let find_dfs_limited limit =
         let rec search_node path sum self limit =
             let rec search_list = function
@@ -103,7 +113,7 @@ let find_ids { origin; goals; neigh_f; _ } =
             else if List.mem self path then Bottom
             (* search children *)
             else
-                search_list (neigh_f self)
+                search_list (next_f self)
         in
         search_node [] 0 origin limit
             |> container_map (fun (path, distance) -> (List.rev path, distance))
@@ -123,7 +133,7 @@ assert (find_ids graph3 = Some (['a'; 'c'; 'h'], 5));;
 
 let graph = {
     origin = 's'; goals = ['l'; 'o'];
-    neigh_f = (function
+    next_f = (function
         | 's' -> ['a', 3; 'b', 2; 'c', 2]
         | 'a' -> ['d', 3; 'e', 5]
         | 'b' -> ['e', 4; 'f', 3; 'g', 3]
@@ -163,7 +173,7 @@ assert (find_ids graph = find_bfs graph);;
 
 
 (* greedy best-first search *)
-let find_greedy { origin; goals; neigh_f; heur_f } =
+let find_greedy { origin; goals; next_f; heur_f } =
     let rec search_node path sum self =
         let search_min_child children =
             let rec min ((min, _, _) as prev) (hd, dist) =
@@ -180,7 +190,7 @@ let find_greedy { origin; goals; neigh_f; heur_f } =
         (* prevent cycling *)
         else if List.mem self path then None
         (* search children *)
-        else search_min_child (neigh_f self)
+        else search_min_child (next_f self)
     in
     search_node [] 0 origin
         |> Option.map (fun (path, distance) -> (List.rev path, distance))
@@ -219,7 +229,7 @@ module PrioQueue =
     end;;
 
 (* A* *)
-let find_a' { origin; goals; neigh_f; heur_f } =
+let find_a' { origin; goals; next_f; heur_f } =
     let open PrioQueue in
     let add_to_queue queue path sum neighbours =
         let insert queue ((new_n, dist) as node) =
@@ -236,7 +246,7 @@ let find_a' { origin; goals; neigh_f; heur_f } =
                 let (_, (dist, (node, _), path), queue) = extract queue in
                 (* goal found *)
                 if List.mem node goals then Some (List.rev path, dist)
-                else aux (add_to_queue queue path dist (neigh_f node))
+                else aux (add_to_queue queue path dist (next_f node))
     in
     aux (leaf 0 (0, (origin, 0), [origin]))
 ;;
@@ -251,7 +261,7 @@ type ('a, 'b) result =
 ;;
 
 (* IDA* *)
-let find_ida' { origin; goals; neigh_f; heur_f } =
+let find_ida' { origin; goals; next_f; heur_f } =
     let find_a'limited limit =
         (* smallest of the distances that go over the limit *)
         let next_limit = ref None in
@@ -279,7 +289,7 @@ let find_ida' { origin; goals; neigh_f; heur_f } =
             | (dist, (self, _), path) :: queue ->
                     (* goal found *)
                     if List.mem self goals then Result (List.rev path, dist)
-                    else aux (add_to_queue queue path dist (neigh_f self))
+                    else aux (add_to_queue queue path dist (next_f self))
         in
         aux [(0, (origin, 0), [origin])]
     in

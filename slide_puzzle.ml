@@ -1,26 +1,17 @@
 open Graph
 
-exception Unreachable of string;;
-
-let fold_lefti f x a =
-    let open Array in
-    let r = ref x in
-    for i = 0 to length a - 1 do
-        r := f !r i (unsafe_get a i)
-    done;
-    !r
-;;
 let slide_puzzle = {
     (* 0 means empty *)
-    origin = [|3; 5; 2;
-               0; 7; 6;
-               4; 1; 8|];
+    origin =
+        [|7; 2; 4;
+          5; 0; 6;
+          8; 3; 1|];
     goals = [
         [|1; 2; 3;
           4; 5; 6;
           7; 8; 0|]
     ];
-    neigh_f = (function
+    next_f = (function
         | [|0; b; c;
             d; e; f;
             g; h; i|] -> [
@@ -41,8 +32,8 @@ let slide_puzzle = {
                   d; e; f;
                   g; h; i|], 1;
                 [|0; a; c;
-                  d; e; f   ;
-                  g; h; i  |], 1
+                  d; e; f;
+                  g; h; i|], 1
             ];
         | [|a; b; 0;
             d; e; f;
@@ -148,7 +139,11 @@ let slide_puzzle = {
         let manhattan_dist (a, b) (x, y) =
             Int.abs (a - x) + Int.abs (b - y)
         in
-        fold_lefti (fun sum i x -> sum + manhattan_dist (current_pos i) (desired_pos x)) 0 state / 2)
+        let _euclid_dist (a, b) (x, y) =
+            let d1 = a - x and d2 = b - y in
+            (d1 * d1 + d2 * d2) |> Int.to_float |> Float.sqrt |> Float.to_int
+        in
+        fold_lefti (fun sum i x -> sum + manhattan_dist (current_pos i) (desired_pos x)) 0 state)
 };;
 
 let print_path path =
@@ -171,7 +166,7 @@ let print_path path =
 ;;
 
 
-match find_ida' slide_puzzle with
+match find_a' slide_puzzle with
 | Some (path, steps) -> print_path path; Format.printf "steps: %d\n" steps
 | None -> print_endline "not found"
 
