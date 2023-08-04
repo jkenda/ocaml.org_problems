@@ -262,20 +262,13 @@ let find_ida' { origin; goals; neigh_f; heur_f } =
         in
         (* add children's properties to queue *)
         let add_to_queue queue path sum children =
-            let insert ((new_node, dist) as node) list =
-                if List.mem new_node path then list
-                else
-                    let (dist, _, _) as node = sum + dist, node, new_node :: path in
-                    let dist_plus_h = dist + heur_f new_node in
-                    let rec insert' = function
-                        | [] -> [node]
-                        | (d, (n, _), _) :: _ as ls when dist_plus_h <= d + heur_f n -> node :: ls
-                        | hd :: tl -> hd :: insert' tl
-                    in
-                    if dist_plus_h > limit then (next_limit_is dist_plus_h; list)
-                    else insert' list
+            let transform ((new_node, dist) as node) =
+                let (dist, (self, _), path) as node = sum + dist, node, new_node :: path in
+                let dist_plus_h = dist + heur_f new_node in
+                if dist_plus_h <= limit then Some node
+                else (next_limit_is dist_plus_h; None)
             in
-            List.fold_right insert children queue
+            List.filter_map transform children @ queue
         in
         let rec aux = function
             (* queue is exhausted, none of the goals found *)
