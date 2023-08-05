@@ -1,6 +1,6 @@
 open Graph
 
-let slide_puzzle = {
+let sliding_puzzle_3x3 = {
     (* 0 means empty *)
     origin =
         [|7; 2; 4;
@@ -166,7 +166,7 @@ let print_path path =
 ;;
 
 
-match find_a' slide_puzzle with
+match find_ida' sliding_puzzle_3x3 with
 | Some (path, steps) -> print_path path; Format.printf "steps: %d\n" steps
 | None -> print_endline "not found"
 

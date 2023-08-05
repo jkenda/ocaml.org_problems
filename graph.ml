@@ -1,5 +1,4 @@
-exception Illegal;;
-exception Unreachable of string;;
+exception Unreachable;;
 
 let fold_lefti f x a =
     let open Array in
@@ -20,19 +19,19 @@ type 'a graph = {
 
 let graph1 = {
     origin = 'a'; goals = ['h'];
-    next_f = (function 'a' -> ['b', 1; 'c', 2] | 'b' | 'c' -> [] | _ -> raise Illegal);
+    next_f = (function 'a' -> ['b', 1; 'c', 2] | 'b' | 'c' -> [] | _ -> raise Unreachable);
     heur_f = (function _ -> 0)
 };;
 
 let graph2 = {
     origin = 'a'; goals = ['c'];
-    next_f = (function 'a' -> ['b', 1; 'c', 2] | 'b' | 'c' -> [] | _ -> raise Illegal);
+    next_f = (function 'a' -> ['b', 1; 'c', 2] | 'b' | 'c' -> [] | _ -> raise Unreachable);
     heur_f = (function _ -> 0)
 };;
 
 let graph3 = {
     origin = 'a'; goals = ['h'];
-    next_f = (function 'a' -> ['b', 1; 'c', 2] | 'b' -> [] | 'c' -> ['h', 3] | _ -> raise Illegal);
+    next_f = (function 'a' -> ['b', 1; 'c', 2] | 'b' -> [] | 'c' -> ['h', 3] | _ -> raise Unreachable);
     heur_f = (function _ -> 0)
 }
 
@@ -63,7 +62,11 @@ assert (find_dfs graph3 = Some (['a'; 'c'; 'h'], 5));;
 (* breadth first search *)
 let find_bfs { origin; goals; next_f; _ } =
     let add_to_queue queue path sum children =
-        queue @ List.map (fun ((node, dist) as child) -> node :: path, sum + dist, child) children
+        let filter ((node, dist) as child) =
+            if List.mem node path then None
+            else Some (node :: path, sum + dist, child)
+        in
+        queue @ List.filter_map filter children
     in
     let rec aux = function
         (* queue is exhausted, none of the goals found *)
@@ -151,20 +154,27 @@ let graph = {
         | 'n' -> ['o', 2]
         | 'o' -> []
         | 'p' -> []
-        | _ -> raise (Failure "node doesn't exist"));
-    heur_f = (function _ -> raise (Failure "the default heur_f is a placeholder"))
+        | _ -> raise Unreachable);
+    heur_f = (function _ ->
+        raise (Failure "the default heur_f is a placeholder"))
 };;
 
-let correct_h = function 's' -> 4 | 'a' -> 5 | 'b' -> 5 | 'c' -> 5 | 'd' -> 1 | 'e' -> 1 | 'f' -> 3 | 'g' -> 6 | 'h' -> 2
-                       | 'i' -> 1 | 'j' -> 2 | 'k' -> 1 | 'l' -> 0 | 'm' -> 6 | 'n' -> 2 | 'o' -> 0 | 'p' -> 1
+let correct_h = function 's' -> 4 | 'a' -> 5 | 'b' -> 5 | 'c' -> 5
+                       | 'd' -> 1 | 'e' -> 1 | 'f' -> 3 | 'g' -> 6
+                       | 'h' -> 2 | 'i' -> 1 | 'j' -> 2 | 'k' -> 1
+                       | 'l' -> 0 | 'm' -> 6 | 'n' -> 2 | 'o' -> 0 | 'p' -> 1
                        | _ -> raise (Failure "invalid node reached");;
-let perfect_h = function 's' -> 7 | 'a' -> 6 | 'b' -> 5 | 'c' -> 7 | 'd' -> 4 | 'e' -> 1 | 'f' -> 3 | 'g' -> Int.max_int
-                       | 'h' -> 2 | 'i' -> Int.max_int  | 'j' -> 3 | 'k' -> 2 | 'l' -> 0 | 'm' -> Int.max_int
+let perfect_h = function 's' -> 7 | 'a' -> 6 | 'b' -> 5 | 'c' -> 7
+                       | 'd' -> 4 | 'e' -> 1 | 'f' -> 3 | 'g' -> Int.max_int
+                       | 'h' -> 2 | 'i' -> Int.max_int  | 'j' -> 3
+                       | 'k' -> 2 | 'l' -> 0 | 'm' -> Int.max_int
                        | 'n' -> 2 | 'o' -> 0 | 'p' -> Int.max_int
                        | _ -> raise (Failure "invalid node reached");;
 
-let incorrect_h = function 's' -> 4 | 'a' -> 5 | 'b' -> 6 | 'c' -> 5 | 'd' -> 1 | 'e' -> 4 | 'f' -> 3 | 'g' -> 6 | 'h' -> 5
-                         | 'i' -> 1 | 'j' -> 2 | 'k' -> 1 | 'l' -> 2 | 'm' -> 6 | 'n' -> 2 | 'o' -> 0 | 'p' -> 1
+let incorrect_h = function 's' -> 4 | 'a' -> 5 | 'b' -> 6 | 'c' -> 5
+                         | 'd' -> 1 | 'e' -> 4 | 'f' -> 3 | 'g' -> 6
+                         | 'h' -> 5 | 'i' -> 1 | 'j' -> 2 | 'k' -> 1
+                         | 'l' -> 2 | 'm' -> 6 | 'n' -> 2 | 'o' -> 0 | 'p' -> 1
                          | _ -> raise (Failure "invalid node reached");;
 
 assert (find_bfs graph = Some (['s'; 'a'; 'e'; 'l'], 9));;
@@ -182,8 +192,8 @@ let find_greedy { origin; goals; next_f; heur_f } =
             in
             let (_, child, dist) = List.fold_left min (Int.max_int, None, 0) children in
             match child with
-            | Some child -> search_node (self :: path) (sum + dist) child
-            | None -> None
+            | Some child when not (List.mem child path) -> search_node (self :: path) (sum + dist) child
+            | _ -> None
         in
         (* goal reached *)
         if List.mem self goals then Some (self :: path, sum)
@@ -193,7 +203,7 @@ let find_greedy { origin; goals; next_f; heur_f } =
         else search_min_child (next_f self)
     in
     search_node [] 0 origin
-        |> Option.map (fun (path, distance) -> (List.rev path, distance))
+    |> Option.map (fun (path, distance) -> (List.rev path, distance))
 ;;
 assert (find_greedy { graph with heur_f = perfect_h } = Some (['s'; 'b'; 'e'; 'l'], 7));;
 assert (find_greedy { graph with heur_f = correct_h } = None);;
@@ -232,9 +242,11 @@ module PrioQueue =
 let find_a' { origin; goals; next_f; heur_f } =
     let open PrioQueue in
     let add_to_queue queue path sum neighbours =
-        let insert queue ((new_n, dist) as node) =
-            let (dist, _, _) as node = sum + dist, node, new_n :: path in
-            insert queue (dist + heur_f new_n) node
+        let insert queue ((self, dist) as node) =
+            if List.mem self path then queue (* prevent cycling *)
+            else
+                let (dist, _, _) as node = sum + dist, node, self :: path in
+                insert queue (dist + heur_f self) node
         in
         List.fold_left insert queue neighbours
     in
@@ -243,10 +255,10 @@ let find_a' { origin; goals; next_f; heur_f } =
         | Empty -> None
         (* there are still elements in the queue *)
         | queue ->
-                let (_, (dist, (node, _), path), queue) = extract queue in
+                let (_, (dist, (self, _), path), queue) = extract queue in
                 (* goal found *)
-                if List.mem node goals then Some (List.rev path, dist)
-                else aux (add_to_queue queue path dist (next_f node))
+                if List.mem self goals then Some (List.rev path, dist)
+                else aux (add_to_queue queue path dist (next_f self))
     in
     aux (leaf 0 (0, (origin, 0), [origin]))
 ;;
@@ -254,6 +266,7 @@ assert (find_a' { graph with heur_f = correct_h } = Some (['s'; 'b'; 'e'; 'l'], 
 assert (find_a' { graph with heur_f = perfect_h } = find_a' { graph with heur_f = correct_h });;
 
 assert (find_a' { graph with heur_f = incorrect_h } = Some (['s'; 'b'; 'f'; 'n'; 'o'], 8));;
+assert (find_a' { graph with heur_f = (fun _ -> 0); goals = [' ']   } = None);;
 
 type ('a, 'b) result =
     | Result of 'a
@@ -262,23 +275,23 @@ type ('a, 'b) result =
 
 (* IDA* *)
 let find_ida' { origin; goals; next_f; heur_f } =
-    let find_a'limited limit =
+    let find_ds_limited limit =
         (* smallest of the distances that go over the limit *)
-        let next_limit = ref None in
+        let next_limit = ref Int.max_int in
         let set_next_limit limit =
-            match !next_limit with
-            | None -> next_limit := Some limit
-            | Some nl -> if limit < nl then next_limit := Some limit
+            if limit < !next_limit then next_limit := limit
         in
         (* add children's properties to queue *)
         let add_to_queue queue path sum children =
-            let transform ((new_node, dist) as node) =
-                let (dist, _, _) as node = sum + dist, node, new_node :: path in
-                let dist = dist + heur_f new_node in
-                if dist <= limit then
-                    Some node
+            let transform ((self, dist) as node) =
+                if List.mem self path then None (* prevent cycling *)
                 else
-                    (set_next_limit dist; None)
+                    let (dist, _, _) as node = sum + dist, node, self :: path in
+                    let dist = dist + heur_f self in
+                    if dist <= limit then
+                        Some node
+                    else
+                        (set_next_limit dist; None)
             in
             List.filter_map transform children @ queue
         in
@@ -294,10 +307,10 @@ let find_ida' { origin; goals; next_f; heur_f } =
         aux [(0, (origin, 0), [origin])]
     in
     let rec find' limit =
-        match find_a'limited limit with
+        match find_ds_limited limit with
         | Result path_dist -> Some path_dist
-        | Limit None -> None
-        | Limit (Some limit) -> find' limit
+        | Limit l when l <= limit -> None
+        | Limit l -> find' l
     in
     find' (heur_f origin)
 ;;
@@ -307,4 +320,5 @@ assert (find_ida' { graph with heur_f = perfect_h   } = find_ida' { graph with h
 assert (find_ida' { graph with heur_f = incorrect_h } = find_a' { graph with heur_f = incorrect_h });;
 assert (find_ida' { graph with heur_f = correct_h   } = find_a' { graph with heur_f = correct_h   });;
 assert (find_ida' { graph with heur_f = perfect_h   } = find_a' { graph with heur_f = perfect_h   });;
+assert (find_ida' { graph with heur_f = (fun _ -> 0); goals = [' ']   } = None);;
 
